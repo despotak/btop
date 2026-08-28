@@ -269,6 +269,8 @@ namespace Config {
 								"#* Measure PCIe throughput on AMD cards, may impact performance on certain cards."},
 		{"gpu_mirror_graph",	"#* Horizontally mirror the GPU graph."},
 
+		{"proc_gpu_device",	"#* Which GPU the process box's Gpu% and GMem columns report on. -1 sums every device,\n#* 0 and up scope the columns to that GPU alone, numbered as the gpu0/gpu1 boxes are.\n#* Scoping needs a backend that attributes memory per process, so the /proc/[pid]/fdinfo\n#* fallback is skipped while it is set and non-NVIDIA devices report nothing."},
+
 		{"gpu_processes",	"#* Show a list of the processes holding memory on each GPU, inside that GPU's box.\n#* \"Auto\" uses only leftover space in the box, \"On\" always reserves room for it (raising the minimum\n#* terminal height), \"Off\" disables it. Needs a driver that can attribute memory per process."},
 		{"shown_gpus",			"#* Set which GPU vendors to show. Available values are \"nvidia amd intel apple\""},
 		{"custom_gpu_name0",	"#* Custom gpu0 model name, empty string to disable."},
@@ -400,6 +402,7 @@ namespace Config {
 		{"net_download", 100},
 		{"net_upload", 100},
 		{"proc_tree_auto_collapse", 0},
+		{"proc_gpu_device", -1},
 		{"detailed_pid", 0},
 		{"restore_detailed_pid", 0},
 		{"selected_pid", 0},
@@ -588,7 +591,10 @@ namespace Config {
 			return false;
 		}
 
-		if (name == "update_ms" and i_value < 100)
+		if (name == "proc_gpu_device" and i_value < -1)
+			validError = "Config value proc_gpu_device must be -1 (all GPUs) or a device index.";
+
+		else if (name == "update_ms" and i_value < 100)
 			validError = "Config value update_ms set too low (<100).";
 
 		else if (name == "update_ms" and i_value > ONE_DAY_MILLIS)

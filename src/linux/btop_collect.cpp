@@ -3764,8 +3764,10 @@ namespace Proc {
 		uint64_t gpu_time_passed{};
 		#if defined(GPU_SUPPORT)
 			const std::unordered_map<size_t, Gpu::Nvml::proc_stat>* nvml_proc_stats = nullptr;
+			const int gpu_device = Config::getI("proc_gpu_device");
 		#else
 			const void* nvml_proc_stats = nullptr;
+			const int gpu_device = -1;
 		#endif
 
 		static size_t proc_clear_count{};
@@ -3786,7 +3788,10 @@ namespace Proc {
 				if (Gpu::Nvml::initialized) {
 					if (not Gpu::Nvml::process_stats_fresh) Gpu::Nvml::collect_process_stats();
 					Gpu::Nvml::process_stats_fresh = false;
-					nvml_proc_stats = &Gpu::Nvml::get_process_stats();
+					//? -1 sums every device; anything else reports that device alone
+					nvml_proc_stats = gpu_device < 0
+						? &Gpu::Nvml::get_process_stats()
+						: &Gpu::Nvml::get_device_process_stats((size_t)gpu_device);
 				}
 			#endif
 
@@ -4022,7 +4027,7 @@ namespace Proc {
 					}
 				#endif
 
-				if (not used_nvml_gpu_stats and fdinfo_gpu_enabled) {
+				if (not used_nvml_gpu_stats and fdinfo_gpu_enabled and gpu_device < 0) {
 					//? Process GPU usage since last update from /proc/[pid]/fdinfo
 					const auto gpu_stats = proc_gpu_info(d.path());
 					if (fdinfo_gpu_probe_left > 0 and (gpu_stats.busy_ns > 0 or gpu_stats.mem_bytes > 0))
