@@ -3288,6 +3288,16 @@ namespace Proc {
 	int collapse = -1, expand = -1, toggle_children = -1, collapse_all = -1;
 	uint64_t old_cputimes{};
 	uint64_t old_gputimes{};
+
+	//? The /proc/[pid]/fdinfo GPU fallback is scanned for every process every cycle, and on drivers that never
+	//? expose drm-* keys (NVIDIA proprietary, for one) it can never return anything. Probe for a few cycles,
+	//? then stop scanning, and recheck periodically so hybrid setups and hotplug still get picked up.
+	constexpr int FDINFO_GPU_PROBE_CYCLES = 3;
+	constexpr int FDINFO_GPU_RECHECK_CYCLES = 300;
+	bool fdinfo_gpu_enabled = true;
+	int fdinfo_gpu_hits = 0;
+	int fdinfo_gpu_probe_left = FDINFO_GPU_PROBE_CYCLES;
+	int fdinfo_gpu_recheck_left = 0;
 	atomic<int> numpids{};
 	int filter_found{};
 
@@ -3802,9 +3812,11 @@ namespace Proc {
 					}
 				#endif
 
-				if (not used_nvml_gpu_stats) {
+				if (not used_nvml_gpu_stats and fdinfo_gpu_enabled) {
 					//? Process GPU usage since last update from /proc/[pid]/fdinfo
 					const auto gpu_stats = proc_gpu_info(d.path());
+					if (fdinfo_gpu_probe_left > 0 and (gpu_stats.busy_ns > 0 or gpu_stats.mem_bytes > 0))
+						++fdinfo_gpu_hits;
 					const uint64_t gpu_t = gpu_stats.busy_ns;
 					if (gpu_time_passed > 0 and new_proc.gpu_t > 0 and gpu_t >= new_proc.gpu_t)
 						new_proc.gpu_p = clamp(round(1000.0 * (gpu_t - new_proc.gpu_t) / gpu_time_passed) / 10.0, 0.0, 100.0);
@@ -3861,6 +3873,20 @@ namespace Proc {
 
 			old_cputimes = cputimes;
 			old_gputimes = gpu_timestamp;
+
+			//? Retire the fdinfo GPU fallback if the probe window saw no drm-* data at all
+			if (fdinfo_gpu_enabled) {
+				if (fdinfo_gpu_probe_left > 0 and --fdinfo_gpu_probe_left == 0 and fdinfo_gpu_hits == 0) {
+					fdinfo_gpu_enabled = false;
+					fdinfo_gpu_recheck_left = FDINFO_GPU_RECHECK_CYCLES;
+					Logger::debug("Proc::collect() : no drm-* keys in /proc/[pid]/fdinfo, disabling the fdinfo GPU fallback.");
+				}
+			}
+			else if (--fdinfo_gpu_recheck_left <= 0) {
+				fdinfo_gpu_enabled = true;
+				fdinfo_gpu_hits = 0;
+				fdinfo_gpu_probe_left = FDINFO_GPU_PROBE_CYCLES;
+			}
 		}
 		//* ---------------------------------------------Collection done-----------------------------------------------
 
