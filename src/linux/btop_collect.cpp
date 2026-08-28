@@ -3315,8 +3315,16 @@ namespace Proc {
 		std::unordered_map<string, uint64_t> gpu_mems;
 
 		try {
-			for (const auto& d : fs::directory_iterator(pid_path / "fdinfo", fs::directory_options::skip_permission_denied)) {
-				ifstream fdread(d.path());
+			//? Only fds pointing at /dev/dri/* can carry drm-* keys. Reading the symlink is one syscall;
+			//? opening and parsing the matching fdinfo is several, so filter first — on a typical desktop
+			//? this skips well over 99% of the open fds instead of parsing them to find nothing.
+			for (const auto& d : fs::directory_iterator(pid_path / "fd", fs::directory_options::skip_permission_denied)) {
+				std::error_code ec;
+				const auto target = fs::read_symlink(d.path(), ec);
+				if (ec) continue;
+				if (not string_view{target.native()}.starts_with("/dev/dri/")) continue;
+
+				ifstream fdread(pid_path / "fdinfo" / d.path().filename());
 				if (not fdread.good()) continue;
 
 				string driver, pdev, line;
