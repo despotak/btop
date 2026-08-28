@@ -264,6 +264,8 @@ namespace Config {
 		{"rsmi_measure_pcie_speeds",
 								"#* Measure PCIe throughput on AMD cards, may impact performance on certain cards."},
 		{"gpu_mirror_graph",	"#* Horizontally mirror the GPU graph."},
+
+		{"gpu_processes",	"#* Show a list of the processes holding memory on each GPU, inside that GPU's box.\n#* \"Auto\" uses only leftover space in the box, \"On\" always reserves room for it (raising the minimum\n#* terminal height), \"Off\" disables it. Needs a driver that can attribute memory per process."},
 		{"shown_gpus",			"#* Set which GPU vendors to show. Available values are \"nvidia amd intel apple\""},
 		{"custom_gpu_name0",	"#* Custom gpu0 model name, empty string to disable."},
 		{"custom_gpu_name1",	"#* Custom gpu1 model name, empty string to disable."},
@@ -313,6 +315,7 @@ namespace Config {
 		{"custom_gpu_name4", ""},
 		{"custom_gpu_name5", ""},
 		{"show_gpu_info", "Auto"},
+		{"gpu_processes", "Auto"},
 		{"shown_gpus", "nvidia amd intel apple"}
 	#endif
 	};
@@ -627,6 +630,9 @@ namespace Config {
 	#ifdef GPU_SUPPORT
 		else if (name == "show_gpu_info" and not v_contains(show_gpu_values, value))
 			validError = "Invalid value for show_gpu_info: " + value;
+
+		else if (name == "gpu_processes" and not v_contains(show_gpu_values, value))
+			validError = "Invalid value for gpu_processes: " + value;
 	#endif
 
 		else if (name == "presets" and not presetsValid(value))

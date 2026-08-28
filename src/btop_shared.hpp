@@ -120,17 +120,25 @@ namespace Gpu {
 	extern vector<int> shown_panels;
 	extern vector<string> gpu_names;
 	extern vector<int> gpu_b_height_offsets;
+
+	//? Most process rows a GPU box will ever show. The list only ever uses height the panel already
+	//? has spare, so enabling it can never make the minimum terminal size larger.
+	constexpr int GPU_PROC_ROWS_MAX = 4;
+	//? Per device: GPU_PROC_ROWS_MAX where the backend can attribute memory per process, else 0
+	extern vector<int> gpu_proc_rows_max;
 	extern long long gpu_pwr_total_max;
 
 	extern std::unordered_map<string, deque<long long>> shared_gpu_percent; // averages, power/vram total
 
 	extern const array<string, 2> mem_names;
 
-	//* Container for process information // TODO
-	/*struct proc_info {
-    unsigned int pid;
-    unsigned long long mem;
-	};*/
+	//* Container for a single process holding memory on one GPU
+	struct proc_info {
+		size_t pid{};
+		string name;
+		uint64_t mem{};
+		double util{};
+	};
 
 	//* Container for supported Gpu::*::collect() functions
 	struct gpu_info_supported {
@@ -146,6 +154,8 @@ namespace Gpu {
 				 pcie_txrx = true,
 				 encoder_utilization = true,
 				 decoder_utilization = true;
+		//? Off unless a backend can attribute memory to individual processes
+		bool proc_stats = false;
 	};
 
 	//* Per-device container for GPU info
@@ -177,8 +187,9 @@ namespace Gpu {
 
 		gpu_info_supported supported_functions;
 
-		// vector<proc_info> graphics_processes = {}; // TODO
-		// vector<proc_info> compute_processes = {};
+		//? Processes holding memory on this device, sorted by memory descending.
+		//? Empty when the backend cannot attribute memory per process.
+		vector<proc_info> processes = {};
 	};
 
 	namespace Nvml {

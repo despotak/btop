@@ -1345,6 +1345,7 @@ static int optionsMenu(const string& key) {
 			{"disable_presets", std::cref(Config::disable_preset_options)},
 		#ifdef GPU_SUPPORT
 			{"show_gpu_info", std::cref(Config::show_gpu_values)},
+			{"gpu_processes", std::cref(Config::show_gpu_values)},
 			{"graph_symbol_gpu", std::cref(Config::valid_graph_symbols_def)},
 		#endif
 		};
@@ -1585,7 +1586,7 @@ static int optionsMenu(const string& key) {
 					else if (option == "base_10_bitrate") {
 						recollect = true;
 					}
-					else if (is_in(option, "proc_sorting", "cpu_sensor", "show_gpu_info") or option.starts_with("graph_symbol") or option.starts_with("cpu_graph_"))
+					else if (is_in(option, "proc_sorting", "cpu_sensor", "show_gpu_info", "gpu_processes") or option.starts_with("graph_symbol") or option.starts_with("cpu_graph_"))
 						screen_redraw = true;
 					else if (option == "disable_presets" and optList.at(i) != "Off") {
 						atomic_wait(Runner::active);

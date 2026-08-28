@@ -1046,6 +1046,8 @@ namespace Gpu {
 	vector<Draw::Meter> pwr_meter_vec = {};
 	vector<Draw::Meter> enc_meter_vec = {};
 	vector<string> box = {};
+	//? Process rows this panel actually has room for, decided in calc_sizes from leftover height
+	vector<int> proc_rows_vec = {};
 
     string draw(const gpu_info& gpu, unsigned long index, bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
@@ -1072,7 +1074,12 @@ namespace Gpu {
 		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
         auto single_graph = !Config::getB("gpu_mirror_graph");
 		string out;
-		int height = gpu_b_height_offsets[index] + 4;
+		//? Rows the panel granted to the process list, plus its header. The PCIe line below is placed
+		//? relative to this height, so it has to be known before anything is drawn.
+		const int proc_rows = (std::cmp_less(index, proc_rows_vec.size()) and gpu.supported_functions.proc_stats)
+			? proc_rows_vec[index] : 0;
+		int height = gpu_b_height_offsets[index] + 4
+			+ ((proc_rows > 0 and Config::getS("gpu_processes") == "Auto") ? proc_rows + 1 : 0);
 		out.reserve(width * height);
 
 		//* Redraw elements not needed to be updated every cycle
@@ -1196,9 +1203,43 @@ namespace Gpu {
 			}
 		}
 
-		//? Processes section header
-		//out += Mv::to(b_y+8, b_x) + Theme::c("div_line") + Symbols::div_left + Symbols::h_line + Symbols::title_left + Theme::c("main_fg") + Fx::b + "gpu-proc" + Fx::ub + Theme::c("div_line")
-		//	+ Symbols::title_right + Symbols::h_line*(b_width/2-12) + Symbols::div_down + Symbols::h_line*(b_width/2-2) + Symbols::div_right;
+		//? The vram block above draws relative to rows_used without advancing it; account for its rows
+		//? with the same expression Shared::init() uses to reserve them.
+		rows_used += (gpu.supported_functions.mem_total or gpu.supported_functions.mem_used)
+			* (1 + 2*(gpu.supported_functions.mem_total and gpu.supported_functions.mem_used) + 2*gpu.supported_functions.mem_utilization);
+
+		//? Processes holding memory on this device, largest first
+		if (proc_rows > 0 and gpu.supported_functions.proc_stats) {
+			//? Row layout, starting at b_x+1: <name><util:4>%<mem:8>, ending flush with the right border.
+			const int name_width = max(8, b_width - 14);
+			//? Header fill widths chosen so "gpu%" ends on the % sign and "mem" ends on the memory column.
+			const int fill_left = max(0, b_width - 24);
+			const int fill_right = max(1, b_width - 19 - fill_left);
+
+			out += Mv::to(b_y + rows_used, b_x) + Theme::c("div_line") + Symbols::div_left + Symbols::h_line
+				+ Symbols::title_left + Fx::b + Theme::c("title") + "gpu-proc" + Fx::ub + Theme::c("div_line") + Symbols::title_right
+				+ Symbols::h_line*fill_left + Theme::c("title") + "gpu%" + Theme::c("div_line") + Symbols::h_line*fill_right
+				+ Theme::c("title") + "mem" + Theme::c("div_line") + Symbols::div_right;
+			rows_used++;
+
+			for (int row = 0; row < proc_rows; row++) {
+				out += Mv::to(b_y + rows_used + row, b_x + 1);
+				if (std::cmp_greater_equal(row, gpu.processes.size())) {
+					//? Blank the row so a shrinking list does not leave the previous cycle's text behind
+					out += string(b_width - 1, ' ');
+					continue;
+				}
+				const auto& proc = gpu.processes.at(row);
+				const auto mem_string = floating_humanizer(proc.mem, true);
+				const auto util = clamp((long long)proc.util, 0ll, 100ll);
+
+				out += Theme::c("main_fg") + ljust(proc.name, name_width, true)
+					+ Theme::g("cpu").at(util) + rjust(to_string(util), 4) + Theme::c("main_fg") + '%'
+					+ Theme::g("used").at(clamp(gpu.mem_total > 0 ? (long long)(proc.mem * 100 / gpu.mem_total) : 0ll, 0ll, 100ll))
+					+ rjust(mem_string, 8) + Theme::c("main_fg");
+			}
+			rows_used += proc_rows;
+		}
 
 		//? PCIe link throughput
 		// Negative RX/TX means that they are manually disabled, not that they are unsupported
@@ -2457,6 +2498,7 @@ namespace Draw {
 			gpu_meter_vec.resize(shown);
 			pwr_meter_vec.resize(shown);
 			enc_meter_vec.resize(shown);
+			proc_rows_vec.resize(shown);
 			redraw.resize(shown);
 			total_height = 0;
 			for (auto i = 0; i < shown; ++i) {
@@ -2476,6 +2518,20 @@ namespace Draw {
 				b_height_vec[i] = gpu_b_height_offsets[shown_panels[i]] + 2;
 				height += (height+Cpu::height == Term::height-1);
 				height = max(height, b_height_vec[i] + 2);
+
+				//? Spend whatever vertical space the panel has left on the process list. One row goes to
+				//? the header, so the list needs two spare rows before it is worth drawing at all.
+				proc_rows_vec[i] = 0;
+				const auto& gpu_procs_mode = Config::getS("gpu_processes");
+				if (gpu_procs_mode == "On") {
+					//? Shared::init already folded these rows into gpu_b_height_offsets
+					proc_rows_vec[i] = gpu_proc_rows_max[shown_panels[i]];
+				}
+				else if (gpu_procs_mode == "Auto") {
+					const int spare = height - 2 - b_height_vec[i] - 1;
+					proc_rows_vec[i] = clamp(spare, 0, gpu_proc_rows_max[shown_panels[i]]);
+					if (proc_rows_vec[i] > 0) b_height_vec[i] += proc_rows_vec[i] + 1;
+				}
 				x_vec[i] = 1; y_vec[i] = 1 + total_height + (not Config::getB("cpu_bottom"))*Cpu::shown*Cpu::height;
 				box[i] = createBox(x_vec[i], y_vec[i], width, height, Theme::c("cpu_box"), true, std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+5)%10); // TODO gpu_box
 				b_width = clamp(width/2, min_width, 65);

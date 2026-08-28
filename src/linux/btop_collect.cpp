@@ -287,9 +287,14 @@ namespace Gpu {
 			template <bool is_init> bool collect(gpu_info* gpus_slice);
 			bool collect_process_stats();
 			auto get_process_stats() -> const std::unordered_map<size_t, proc_stat>&;
+			auto get_device_process_stats(size_t device_index) -> const std::unordered_map<size_t, proc_stat>&;
 			vector<nvmlDevice_t> devices;
 			vector<unsigned long long> process_last_timestamps;
 			std::unordered_map<size_t, proc_stat> process_stats;
+			//? Same data as process_stats, kept split per device so each GPU box can list its own processes
+			vector<std::unordered_map<size_t, proc_stat>> device_process_stats;
+			//? Set when Gpu::collect() has already run the query this cycle, so Proc::collect() does not repeat it
+			bool process_stats_fresh = false;
 			unsigned int device_count = 0;
 		}
 
@@ -483,12 +488,20 @@ namespace Shared {
 			using namespace Gpu;
 			count = gpus.size();
 			gpu_b_height_offsets.resize(gpus.size());
-			for (size_t i = 0; i < gpu_b_height_offsets.size(); ++i)
+			gpu_proc_rows_max.resize(gpus.size());
+			for (size_t i = 0; i < gpu_b_height_offsets.size(); ++i) {
 				gpu_b_height_offsets[i] = gpus[i].supported_functions.gpu_utilization
 					   + gpus[i].supported_functions.pwr_usage
 					   + (gpus[i].supported_functions.encoder_utilization or gpus[i].supported_functions.decoder_utilization)
 					   + (gpus[i].supported_functions.mem_total or gpus[i].supported_functions.mem_used)
 						* (1 + 2*(gpus[i].supported_functions.mem_total and gpus[i].supported_functions.mem_used) + 2*gpus[i].supported_functions.mem_utilization);
+
+				gpu_proc_rows_max[i] = gpus[i].supported_functions.proc_stats ? Gpu::GPU_PROC_ROWS_MAX : 0;
+				//? "Auto" takes only leftover panel space and so costs no height here. "On" reserves the
+				//? rows outright, which does raise the minimum terminal height.
+				if (Config::getS("gpu_processes") == "On")
+					gpu_b_height_offsets[i] += gpu_proc_rows_max[i] > 0 ? gpu_proc_rows_max[i] + 1 : 0;
+			}
 		}
 	#endif
 
@@ -1477,6 +1490,9 @@ namespace Gpu {
 						gpu_pwr_total_max += max_power;
 					}
 
+					//? Per-process memory attribution, used by the GPU box process list
+					gpus[i].supported_functions.proc_stats = process_memory_functions_available;
+
 					//? Get temp_max
 					unsigned int temp_max;
     				result = nvmlDeviceGetTemperatureThreshold(devices[i], NVML_TEMPERATURE_THRESHOLD_SHUTDOWN, &temp_max);
@@ -1641,10 +1657,12 @@ namespace Gpu {
 		bool collect_process_stats() {
 			if (not initialized or (not process_memory_functions_available and not process_utilization_function_available)) {
 				process_stats.clear();
+				device_process_stats.clear();
 				return false;
 			}
 
 			process_stats.clear();
+			device_process_stats.assign(device_count, {});
 
 			auto merge_process_memory = [&](unsigned int pid, unsigned long long used_mem, std::unordered_map<size_t, uint64_t>& mem_by_pid) {
 				if (used_mem == NVML_VALUE_NOT_AVAILABLE_ULL) return;
@@ -1716,6 +1734,7 @@ namespace Gpu {
 
 					for (const auto& [pid, mem] : mem_by_pid) {
 						process_stats[pid].mem += mem;
+						device_process_stats.at(i)[pid].mem += mem;
 					}
 				}
 
@@ -1740,6 +1759,7 @@ namespace Gpu {
 
 					for (const auto& [pid, util] : util_by_pid) {
 						process_stats[pid].gpu += util;
+						device_process_stats.at(i)[pid].gpu += util;
 					}
 				}
 			}
@@ -1747,12 +1767,21 @@ namespace Gpu {
 			for (auto& [_, stat] : process_stats) {
 				stat.gpu = clamp(stat.gpu, 0.0, 100.0);
 			}
+			for (auto& per_device : device_process_stats) {
+				for (auto& [_, stat] : per_device) stat.gpu = clamp(stat.gpu, 0.0, 100.0);
+			}
 
 			return true;
 		}
 
 		auto get_process_stats() -> const std::unordered_map<size_t, proc_stat>& {
 			return process_stats;
+		}
+
+		auto get_device_process_stats(size_t device_index) -> const std::unordered_map<size_t, proc_stat>& {
+			static const std::unordered_map<size_t, proc_stat> empty;
+			if (device_index >= device_process_stats.size()) return empty;
+			return device_process_stats.at(device_index);
 		}
     }
 
@@ -2443,6 +2472,25 @@ namespace Gpu {
 		template bool collect<1>(gpu_info*);
 	}
 
+	//? Longest process list any GPU panel can display; the panel trims further to fit its height
+	constexpr size_t GPU_PROC_LIST_MAX = 12;
+
+	//? Resolve a pid to its comm name. The GPU process set is small and mostly stable, so cache it
+	//? and evict on miss rather than re-reading /proc every cycle.
+	auto get_proc_name(size_t pid) -> string {
+		static std::unordered_map<size_t, string> name_cache;
+		if (const auto it = name_cache.find(pid); it != name_cache.end()) return it->second;
+
+		string name;
+		if (ifstream comm{fmt::format("/proc/{}/comm", pid)}; comm.good())
+			getline(comm, name);
+		if (name.empty()) name = '[' + to_string(pid) + ']';
+
+		if (name_cache.size() > 4 * GPU_PROC_LIST_MAX) name_cache.clear();
+		name_cache[pid] = name;
+		return name;
+	}
+
 	//? Collect data from GPU-specific libraries
 	auto collect(bool no_update) -> vector<gpu_info>& {
 		if (Runner::stopping or (no_update and not gpus.empty())) return gpus;
@@ -2454,6 +2502,23 @@ namespace Gpu {
 		Rsmi::collect<0>(gpus.data() + Nvml::device_count); // size = Rsmi::device_count
 		Asysfs::collect<0>(gpus.data() + Nvml::device_count + Rsmi::device_count); // size = Asysfs::device_count
 		Intel::collect<0>(gpus.data() + Nvml::device_count + Rsmi::device_count + Asysfs::device_count); // size = Intel::device_count
+
+		//* Per-device process lists for the GPU panels.
+		//? Runs before Cpu:: and Proc:: collection, so Proc::collect() reuses this cycle's result.
+		if (Gpu::shown > 0 and Config::getS("gpu_processes") != "Off") {
+			Nvml::collect_process_stats();
+			Nvml::process_stats_fresh = true;
+			for (size_t i = 0; i < Nvml::device_count and i < gpus.size(); i++) {
+				auto& procs = gpus[i].processes;
+				procs.clear();
+				for (const auto& [pid, stat] : Nvml::get_device_process_stats(i)) {
+					if (stat.mem == 0 and stat.gpu == 0.0) continue;
+					procs.push_back({pid, get_proc_name(pid), stat.mem, stat.gpu});
+				}
+				rng::sort(procs, rng::greater{}, &proc_info::mem);
+				if (procs.size() > GPU_PROC_LIST_MAX) procs.resize(GPU_PROC_LIST_MAX);
+			}
+		}
 
 		//* Calculate average usage
 		long long avg = 0;
@@ -3630,7 +3695,8 @@ namespace Proc {
 
 			#if defined(GPU_SUPPORT)
 				if (Gpu::Nvml::initialized) {
-					Gpu::Nvml::collect_process_stats();
+					if (not Gpu::Nvml::process_stats_fresh) Gpu::Nvml::collect_process_stats();
+					Gpu::Nvml::process_stats_fresh = false;
 					nvml_proc_stats = &Gpu::Nvml::get_process_stats();
 				}
 			#endif
