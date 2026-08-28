@@ -110,8 +110,10 @@ bool set_priority(pid_t pid, int priority) {
 			case 3: rng::stable_sort(proc_vec, rng::less{}, &proc_info::threads);	break;
 			case 4: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::user); 		break;
 			case 5: rng::stable_sort(proc_vec, rng::less{}, &proc_info::mem); 		break;
-			case 6: rng::stable_sort(proc_vec, rng::less{}, &proc_info::cpu_p);		break;
-			case 7: rng::stable_sort(proc_vec, rng::less{}, &proc_info::cpu_c);		break;
+			case 6: rng::stable_sort(proc_vec, rng::less{}, &proc_info::gpu_p);		break;
+			case 7: rng::stable_sort(proc_vec, rng::less{}, &proc_info::gpu_m);		break;
+			case 8: rng::stable_sort(proc_vec, rng::less{}, &proc_info::cpu_p);		break;
+			case 9: rng::stable_sort(proc_vec, rng::less{}, &proc_info::cpu_c);		break;
 			}
 		}
 		else {
@@ -122,8 +124,10 @@ bool set_priority(pid_t pid, int priority) {
 			case 3: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::threads);	break;
 			case 4: rng::stable_sort(proc_vec, rng::less{}, &proc_info::user);		break;
 			case 5: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::mem); 		break;
-			case 6: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::cpu_p);   	break;
-			case 7: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::cpu_c);   	break;
+			case 6: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::gpu_p);   	break;
+			case 7: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::gpu_m);   	break;
+			case 8: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::cpu_p);   	break;
+			case 9: rng::stable_sort(proc_vec, rng::greater{}, &proc_info::cpu_c);   	break;
 			}
 		}
 
@@ -151,16 +155,20 @@ bool set_priority(pid_t pid, int priority) {
 				switch (v_index(sort_vector, sorting)) {
 				case 3: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().threads < b.entry.get().threads; });	break;
 				case 5: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().mem < b.entry.get().mem; });	break;
-				case 6: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_p < b.entry.get().cpu_p; });	break;
-				case 7: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_c < b.entry.get().cpu_c; });	break;
+				case 6: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().gpu_p < b.entry.get().gpu_p; });	break;
+				case 7: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().gpu_m < b.entry.get().gpu_m; });	break;
+				case 8: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_p < b.entry.get().cpu_p; });	break;
+				case 9: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_c < b.entry.get().cpu_c; });	break;
 				}
 			}
 			else {
 				switch (v_index(sort_vector, sorting)) {
 				case 3: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().threads > b.entry.get().threads; });	break;
 				case 5: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().mem > b.entry.get().mem; });	break;
-				case 6: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_p > b.entry.get().cpu_p; });	break;
-				case 7: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_c > b.entry.get().cpu_c; });	break;
+				case 6: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().gpu_p > b.entry.get().gpu_p; });	break;
+				case 7: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().gpu_m > b.entry.get().gpu_m; });	break;
+				case 8: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_p > b.entry.get().cpu_p; });	break;
+				case 9: rng::stable_sort(proc_vec, [](const auto& a, const auto& b) { return a.entry.get().cpu_c > b.entry.get().cpu_c; });	break;
 				}
 			}
 		}
@@ -174,6 +182,10 @@ bool set_priority(pid_t pid, int priority) {
 	}
 
 	auto matches_filter(const proc_info& proc, const std::string& filter) -> bool {
+		if (Config::getB("proc_gpu_only") and proc.gpu_p <= 0.0 and proc.gpu_m == 0) {
+			return false;
+		}
+
 		if (filter.starts_with("!")) {
 			if (filter.size() == 1) {
 				return true;
@@ -243,6 +255,8 @@ bool set_priority(pid_t pid, int priority) {
 				if (p.state != 'X') {
 					cur_proc.cpu_p += p.cpu_p;
 					cur_proc.cpu_c += p.cpu_c;
+					cur_proc.gpu_p += p.gpu_p;
+					cur_proc.gpu_m += p.gpu_m;
 					cur_proc.mem += p.mem;
 					cur_proc.threads += p.threads;
 				}
@@ -252,6 +266,8 @@ bool set_priority(pid_t pid, int priority) {
 			else if (Config::getB("proc_aggregate") and p.state != 'X') {
 				cur_proc.cpu_p += p.cpu_p;
 				cur_proc.cpu_c += p.cpu_c;
+				cur_proc.gpu_p += p.gpu_p;
+				cur_proc.gpu_m += p.gpu_m;
 				cur_proc.mem += p.mem;
 				cur_proc.threads += p.threads;
 			}
@@ -341,6 +357,8 @@ const vector<string> Proc::sort_vector = {
 	"threads",
 	"user",
 	"memory",
+	"gpu",
+	"gpu memory",
 	"cpu direct",
 	"cpu lazy",
 };

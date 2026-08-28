@@ -390,11 +390,14 @@ namespace Proc {
 		uint64_t mem{};
 		double cpu_p{};         // defaults to = 0.0
 		double cpu_c{};         // defaults to = 0.0
+		double gpu_p{};         // defaults to = 0.0
+		uint64_t gpu_m{};
 		char state = '0';
 		int64_t p_nice{};
 		uint64_t ppid{};
 		uint64_t cpu_s{};
 		uint64_t cpu_t{};
+		uint64_t gpu_t{};
 		uint64_t death_time{};
 		string prefix{};        // defaults to ""
 		size_t depth{};
