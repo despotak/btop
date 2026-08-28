@@ -2657,6 +2657,27 @@ namespace Draw {
 		}
 	#endif
 
+		//? Rows layout: mem and net share one full-width row, proc spans the width beneath them.
+		//? Both rows come out of the same vertical space the mem/net column used to own, so proc
+		//? trades height for width. Off unless proc_full_width is set (preset field "proc:2").
+		const bool rows_layout = Config::getB("proc_full_width") and Proc::shown and (Mem::shown or Net::shown);
+	#ifdef GPU_SUPPORT
+		const int lower_avail = Term::height - Cpu::height * Cpu::shown - Gpu::total_height;
+		const int lower_top   = (Config::getB("cpu_bottom") ? 1 : Cpu::height * Cpu::shown + 1) + Gpu::total_height;
+		//? Height of the mem/net row. Derived once, from the same expression the stacked layout uses
+		//? for mem alone, so the row is the same height whether or not mem happens to be shown.
+		const int rows_row_h  = rows_layout ? clamp(
+			(int)floor((double)Term::height * (100 - Net::height_p * 4 / ((Gpu::shown != 0 and Cpu::shown) + 4)) / 100)
+				- Cpu::height * Cpu::shown - Gpu::total_height,
+			4, max(5, lower_avail - 4)) : 0;
+	#else
+		const int lower_avail = Term::height - Cpu::height * Cpu::shown;
+		const int lower_top   = Config::getB("cpu_bottom") ? 1 : Cpu::height * Cpu::shown + 1;
+		const int rows_row_h  = rows_layout ? clamp(
+			(int)floor((double)Term::height * (100 - Cpu::height_p * Cpu::shown - Net::height_p) / 100),
+			4, max(5, lower_avail - 4)) : 0;
+	#endif
+
 		//* Calculate and draw mem box outlines
 		if (Mem::shown) {
 			using namespace Mem;
@@ -2671,6 +2692,14 @@ namespace Draw {
 			height = floor(static_cast<double>(Term::height) * (100 - Cpu::height_p * Cpu::shown - Net::height_p * Net::shown) / 100);
 		#endif
 			x = (proc_left and Proc::shown) ? Term::width - width + 1: 1;
+
+			if (rows_layout) {
+				width = Net::shown
+					? (int)round((double)Term::width * width_p / (width_p + Net::width_p))
+					: (int)Term::width;
+				x = 1;
+				height = rows_row_h;
+			}
 			if (mem_below_net and Net::shown)
 		#ifdef GPU_SUPPORT
 				y = Term::height - height + 1 - (cpu_bottom ? Cpu::height : 0);
@@ -2681,6 +2710,7 @@ namespace Draw {
 			else
 				y = cpu_bottom ? 1 : Cpu::height + 1;
 		#endif
+			if (rows_layout) y = lower_top;
 
 			if (show_disks) {
 				mem_width = ceil((double)(width - 3) / 2);
@@ -2735,6 +2765,12 @@ namespace Draw {
 			height = Term::height - Cpu::height - Mem::height;
 		#endif
 			x = (proc_left and Proc::shown) ? Term::width - width + 1 : 1;
+
+			if (rows_layout) {
+				width = Mem::shown ? (int)Term::width - Mem::width : (int)Term::width;
+				x = Mem::shown ? Mem::width + 1 : 1;
+				height = rows_row_h;
+			}
 			if (mem_below_net and Mem::shown)
 			#ifdef GPU_SUPPORT
 				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height;
@@ -2743,6 +2779,7 @@ namespace Draw {
 			#endif
 			else
 				y = Term::height - height + 1 - (cpu_bottom ? Cpu::height : 0);
+			if (rows_layout) y = lower_top;
 
 			b_width = (width > 45) ? 27 : 19;
 			b_height = (height > 10) ? 9 : height - 2;
@@ -2769,11 +2806,18 @@ namespace Draw {
 			height = Term::height - Cpu::height;
 		#endif
 			x = proc_left ? 1 : Term::width - width + 1;
+
 		#ifdef GPU_SUPPORT
 			y = ((cpu_bottom and Cpu::shown) ? 1 : Cpu::height + 1) + Gpu::total_height;
 		#else
 			y = (cpu_bottom and Cpu::shown) ? 1 : Cpu::height + 1;
 		#endif
+			if (rows_layout) {
+				width  = (int)Term::width;
+				height = lower_avail - rows_row_h;
+				x = 1;
+				y = lower_top + rows_row_h;
+			}
 			select_max = height - 3;
 			box = createBox(x, y, width, height, Theme::c("proc_box"), true, "proc", "", 4);
 		}

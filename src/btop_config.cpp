@@ -213,6 +213,8 @@ namespace Config {
 
 		{"mem_below_net",		"#* Show mem box below net box instead of above."},
 
+		{"proc_full_width",		"#* Lay the lower half out in rows instead of columns: mem and net side by side,\n#* with the proc box spanning the full width underneath. Proc gains width and loses\n#* height, since both rows come out of the same space."},
+
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
 
 		{"show_swap", 			"#* If swap memory should be shown in memory box."},
@@ -355,6 +357,7 @@ namespace Config {
 		{"background_update", true},
 		{"mem_graphs", true},
 		{"mem_below_net", false},
+		{"proc_full_width", false},
 		{"zfs_arc_cached", true},
 		{"show_swap", true},
 		{"swap_disk", true},
@@ -499,7 +502,9 @@ namespace Config {
 				return false;
 			}
 			for (int y = 0; const auto& box : ssplit(preset, ',')) {
-				if (++y > 4) {
+				//? The old cap of 4 predates the GPU boxes; a machine with two GPUs can legitimately
+				//? want cpu, gpu0, gpu1, mem, net and proc in one preset.
+				if (std::cmp_greater(++y, valid_boxes.size())) {
 					validError = "Too many boxes entered for preset!";
 					return false;
 				}
@@ -512,7 +517,8 @@ namespace Config {
 					validError = "Invalid box name in config value presets!";
 					return false;
 				}
-				if (not is_in(vals.at(1), "0", "1")) {
+				//? 2 is proc-only: full width, with mem and net sharing a row above it
+				if (not is_in(vals.at(1), "0", "1") and not (vals.at(0) == "proc" and vals.at(1) == "2")) {
 					validError = "Invalid position value in config value presets!";
 					return false;
 				}
@@ -550,7 +556,9 @@ namespace Config {
 			} else if (vals.at(0) == "mem") {
 				set("mem_below_net", (vals.at(1) != "0"));
 			} else if (vals.at(0) == "proc") {
-				set("proc_left", (vals.at(1) != "0"));
+				//? P field: 0 = right column, 1 = left column, 2 = full width with mem/net in a row above
+				set("proc_left", (vals.at(1) == "1"));
+				set("proc_full_width", (vals.at(1) == "2"));
 			}
 			if (vals.at(0).starts_with("gpu")) {
 				set("graph_symbol_gpu", vals.at(2));
