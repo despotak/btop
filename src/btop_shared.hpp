@@ -310,6 +310,14 @@ namespace Mem {
 			{"swap_total", {}}, {"swap_used", {}}, {"swap_free", {}}};
 		std::unordered_map<string, disk_info> disks;
 		vector<string> disks_order;
+
+		//? zram-backed swap. The kernel reports a zram device's disksize as swap capacity and its
+		//? uncompressed contents as swap usage, but the backing store is RAM - so counting it as
+		//? capacity separate from mem double-counts, and the usage figure is not what it costs.
+		uint64_t zram_orig = 0;         //? uncompressed bytes stored
+		uint64_t zram_compressed = 0;   //? after compression, before allocator overhead
+		uint64_t zram_used = 0;         //? mem_used_total: what it actually costs in RAM
+		bool has_zram = false;
 	};
 
 	//?* Get total system memory

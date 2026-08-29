@@ -2782,6 +2782,31 @@ namespace Mem {
 			mem.stats.at("used") = totalMem - (mem.stats.at("available") <= totalMem ? mem.stats.at("available") : mem.stats.at("free"));
 
 			if (mem.stats.at("swap_total") > 0) mem.stats.at("swap_used") = mem.stats.at("swap_total") - mem.stats.at("swap_free");
+
+			//? Any zram device in use as swap. /proc/swaps names the device; mm_stat holds the
+			//? real cost. Fields are: orig_data_size compr_data_size mem_used_total ...
+			mem.zram_orig = mem.zram_compressed = mem.zram_used = 0;
+			mem.has_zram = false;
+			if (ifstream swaps{Shared::procPath / "swaps"}; swaps.good()) {
+				string line;
+				getline(swaps, line); //? header
+				while (getline(swaps, line)) {
+					if (not line.starts_with("/dev/zram")) continue;
+					const auto dev = line.substr(5, line.find_first_of(" \t", 5) - 5);
+					std::error_code ec;
+					const fs::path stat_path = fs::path("/sys/block") / dev / "mm_stat";
+					if (not fs::exists(stat_path, ec) or ec) continue;
+					if (ifstream mm{stat_path}; mm.good()) {
+						uint64_t orig{}, compr{}, used{};
+						if (mm >> orig >> compr >> used) {
+							mem.zram_orig += orig;
+							mem.zram_compressed += compr;
+							mem.zram_used += used;
+							mem.has_zram = true;
+						}
+					}
+				}
+			}
 		}
 		else
 			throw std::runtime_error("Failed to read /proc/meminfo");

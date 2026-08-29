@@ -1528,6 +1528,20 @@ namespace Mem {
 				cy += (graph_height == 0 ? 1 : graph_height);
 			}
 		}
+		//? zram footprint. The swap figures above describe the compressed device: its disksize as
+		//? capacity and its uncompressed contents as usage. Neither is what it costs, so report
+		//? mem_used_total and the ratio it is achieving. Shown regardless of swap_disk, because
+		//? this is a statement about memory rather than about a swap device.
+		if (mem.has_zram and cy <= height - 3) {
+			const double ratio = mem.zram_compressed > 0
+				? (double)mem.zram_orig / (double)mem.zram_compressed : 0.0;
+			const string value = floating_humanizer(mem.zram_used)
+				+ (ratio >= 1.0 ? fmt::format(" {:.1f}x", ratio) : "");
+			out += Mv::to(y+1+cy, x+1+cx) + Theme::c("title") + Fx::b + "zram:"
+				+ Theme::c("main_fg") + Fx::ub + rjust(value, mem_width - 8);
+			cy += 1;
+		}
+
 		if (graph_height > 0 and cy < height - 2)
 			out += Mv::to(y+1+cy, x+1+cx) + divider;
 
