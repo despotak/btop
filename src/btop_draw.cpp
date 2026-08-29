@@ -1461,7 +1461,8 @@ namespace Mem {
 	//? Draws the disk list into an arbitrary rectangle. Shared by the mem box, which hosts it in
 	//? its right half, and by the standalone disks box (#918), so there is one implementation.
 	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh,
-	                      bool redraw, bool data_same, const string& box_color) {
+	                      bool redraw, bool data_same, const string& box_color, int scroll) {
+		int skip = scroll;
 		string out;
 		auto io_mode = Config::getB("io_mode");
 		auto io_graph_combined = Config::getB("io_graph_combined");
@@ -1478,6 +1479,7 @@ namespace Mem {
 			if (io_mode) {
 				for (const auto& mount : mem.disks_order) {
 					if (not disks.contains(mount)) continue;
+					if (skip > 0) { skip--; continue; }
 					if (cy > dh - 3) break;
 					const auto disk = safeVal(disks, mount);
 					if (disk.io_read.empty()) continue;
@@ -1518,6 +1520,7 @@ namespace Mem {
 			else {
 				for (const auto& mount : mem.disks_order) {
 					if (not disks.contains(mount)) continue;
+					if (skip > 0) { skip--; continue; }
 					if (cy > dh - 3) break;
 					const auto disk = safeVal(disks, mount);
 					if (disk.name.empty() or not disk_meters_used.contains(mount)) continue;
@@ -1683,6 +1686,7 @@ namespace Disks {
 	int min_width = 20, min_height = 6;
 	int x = 1, y = 1, width = 20, height = 6;
 	bool shown = false, redraw = true;
+	int scroll = 0;
 	string box;
 
 	string draw(const Mem::mem_info& mem, bool force_redraw, bool data_same) {
@@ -1702,7 +1706,9 @@ namespace Disks {
 				+ Fx::ub + Theme::c("mem_box") + Symbols::title_right;
 			Input::mouse_mappings["i"] = {y, io_x + 1, 1, 2};
 		}
-		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"));
+		//? Never scroll the last entry off the top
+		scroll = clamp(scroll, 0, max(0, (int)mem.disks_order.size() - 1));
+		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"), scroll);
 		redraw = false;
 		return out + Fx::reset;
 	}

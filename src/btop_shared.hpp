@@ -335,7 +335,7 @@ namespace Mem {
 	//* Draw contents of mem box using <mem> as source
 	string draw(const mem_info& mem, bool force_redraw = false, bool data_same = false);
 	void prepare_disks(const mem_info& mem, int dwidth, int dheight);
-	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color);
+	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color, int scroll = 0);
 
 }
 
@@ -347,6 +347,8 @@ namespace Disks {
 	extern int x, y, width, height;
 	extern bool shown, redraw;
 	extern string box;
+	//? First disk drawn, advanced by the mouse wheel over the box
+	extern int scroll;
 	string draw(const Mem::mem_info& mem, bool force_redraw = false, bool data_same = false);
 }
 

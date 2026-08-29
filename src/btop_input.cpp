@@ -385,6 +385,11 @@ namespace Input {
 				}
 				else if (key == "c")
 					Config::flip("proc_per_core");
+				//? Tab, matching bottom's binding - #979 came from a bottom user asking for this
+				else if (key == "tab") {
+					Config::flip("proc_group_name");
+					Config::set("update_following", true);
+				}
 
 				else if (key == "g") {
 					Config::flip("proc_gpu_only");
@@ -403,6 +408,9 @@ namespace Input {
 					const int y = (Config::getB("show_detailed") ? Proc::y + 8 : Proc::y);
 					const int height = (Config::getB("show_detailed") ? Proc::height - 8 : Proc::height);
 					const auto in_proc_box = col >= Proc::x + 1 and col < Proc::x + Proc::width and line >= y + 1 and line < y + height - 1;
+					const auto in_disks_box = Disks::shown
+						and col >= Disks::x + 1 and col < Disks::x + Disks::width
+						and line >= Disks::y + 1 and line < Disks::y + Disks::height - 1;
 					if (key == "mouse_click") {
 						if (in_proc_box) {
 							if (col < Proc::x + Proc::width - 2) {
@@ -455,6 +463,16 @@ namespace Input {
 							}
 							redraw = true;
 						}
+					}
+					//? Wheel over the disks box scrolls its list; it has no selection, so it is
+					//? a plain offset rather than the proc box's selection-following scroll.
+					else if (key.starts_with("mouse_scroll_") and in_disks_box) {
+						atomic_wait(Runner::active);
+						Disks::scroll += (key.ends_with("_up") ? -1 : 1);
+						if (Disks::scroll < 0) Disks::scroll = 0;
+						Disks::redraw = true;
+						Runner::run("all", true, false);
+						return;
 					}
 					else if (key.starts_with("mouse_scroll_") and in_proc_box) {
 						goto proc_mouse_scroll;
