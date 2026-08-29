@@ -2777,9 +2777,12 @@ namespace Draw {
 			y = cpu_bottom ? Term::height - height + 1 : 1;
 
 		#ifdef GPU_SUPPORT
-			b_columns = max(2, (int)ceil((double)(Shared::coreCount + 1) / (height - gpus_extra_height - 5)));
+			//? b_height below clamps to height - 2 and then spends four rows on chrome, so the
+			//? cores actually get height - extra - 6. Estimating one row more than that put the
+			//? last core past the bottom of the box, silently, with no ellipsis or hint.
+			b_columns = max(2, (int)ceil((double)(Shared::coreCount + 1) / (height - gpus_extra_height - 6)));
 		#else
-			b_columns = max(1, (int)ceil((double)(Shared::coreCount + 1) / (height - 5)));
+			b_columns = max(1, (int)ceil((double)(Shared::coreCount + 1) / (height - 6)));
 		#endif
 			if (b_columns * (21 + 12 * show_temp) < width - (width / 3)) {
 				b_column_size = 2;
