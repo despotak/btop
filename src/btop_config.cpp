@@ -582,8 +582,10 @@ namespace Config {
 				//? P field: 0 = stacked below the cpu box, 1 = beside it
 				set("gpu_beside_cpu", (vals.at(1) == "1"));
 				set("graph_symbol_gpu", vals.at(2));
-			} else {
-				set(strings.find("graph_symbol_" + vals.at(0))->first, vals.at(2));
+			//? find() returns end() for a box with no graph symbol of its own - the disks box shares
+			//? the mem box's - and dereferencing that is how "btop -p 5" segfaulted.
+			} else if (const auto it = strings.find("graph_symbol_" + vals.at(0)); it != strings.end()) {
+				set(it->first, vals.at(2));
 			}
 		}
 
