@@ -3568,6 +3568,8 @@ namespace Proc {
 	constexpr size_t KTHREADD = 2;
 	static std::unordered_set<size_t> kernels_procs = {KTHREADD};
 	static std::unordered_set<size_t> dead_procs;
+	//? Folded view for proc_group_name; separate so current_procs stays usable as the diff cache
+	vector<proc_info> grouped_procs;
 	struct gpu_proc_info {
 		uint64_t busy_ns{};
 		uint64_t mem_bytes{};
@@ -4190,6 +4192,51 @@ namespace Proc {
 					p.filtered = false;
 				}
 			}
+		}
+
+		//* Fold same-named processes into one row (#979). Tree view already expresses structure,
+		//* so grouping is skipped there. current_procs stays intact - it is the incremental cache
+		//* the next cycle diffs against - and the folded view is returned instead.
+		if (Config::getB("proc_group_name") and not tree) {
+			grouped_procs.clear();
+			std::unordered_map<string, size_t> slot;
+			//? The representative's own memory, tracked separately: g.mem is the running sum by the
+			//? time we compare, so it cannot be used to identify the largest single instance.
+			vector<uint64_t> rep_mem;
+			for (const auto& p : current_procs) {
+				if (p.filtered) continue;
+				const auto it = slot.find(p.name);
+				if (it == slot.end()) {
+					slot[p.name] = grouped_procs.size();
+					grouped_procs.push_back(p);
+					grouped_procs.back().instances = 1;
+					rep_mem.push_back(p.mem);
+					continue;
+				}
+				auto& g = grouped_procs.at(it->second);
+				g.cpu_p  += p.cpu_p;
+				g.cpu_c  += p.cpu_c;
+				g.mem    += p.mem;
+				g.threads += p.threads;
+				g.gpu_p  += p.gpu_p;
+				g.gpu_m  += p.gpu_m;
+				g.instances++;
+				//? Act on the largest instance, so terminate/kill hits the one that matters
+				if (p.mem > rep_mem.at(it->second)) {
+					rep_mem.at(it->second) = p.mem;
+					g.pid = p.pid;
+					g.user = p.user;
+					g.cmd = p.cmd;
+					g.short_cmd = p.short_cmd;
+				}
+			}
+			for (auto& g : grouped_procs) {
+				g.filtered = false;
+				if (g.instances > 1) g.cmd = fmt::format("({} processes) {}", g.instances, g.cmd);
+			}
+			proc_sorter(grouped_procs, sorting, reverse, false);
+			numpids = (int)grouped_procs.size();
+			return grouped_procs;
 		}
 
 		//* Sort processes

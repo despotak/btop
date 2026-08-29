@@ -155,6 +155,8 @@ namespace Config {
 		{"proc_follow_detailed",	"#* Should the process list follow the selected process when detailed view is open."},
 
 		{"proc_aggregate",		"#* In tree-view, always accumulate child process resources in the parent process."},
+		{"proc_group_name",		"#* Fold processes that share a name into one row, summing their cpu, memory,\n#* threads and GPU use. The row acts on the largest instance. Ignored in tree view."},
+
 
 		{"proc_tree_auto_collapse", "#* In tree-view, auto-collapse processes with this many or more direct children when\n"
 									"#* entering tree mode. 0 to disable. Useful for collapsing multi-process apps like browsers."},
@@ -388,6 +390,7 @@ namespace Config {
 		{"show_detailed", false},
 		{"proc_filtering", false},
 		{"proc_aggregate", false},
+		{"proc_group_name", false},
 		{"pause_proc_list", false},
 		{"keep_dead_proc_usage", false},
 		{"proc_banner_shown", false},

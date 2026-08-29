@@ -432,6 +432,8 @@ namespace Proc {
 		size_t tree_index{};
 		bool collapsed{};
 		bool filtered{};
+		//? >1 when this row stands for several same-named processes folded together (proc_group_name)
+		size_t instances{1};
 	};
 
 	//* Container for process info box
