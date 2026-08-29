@@ -1388,6 +1388,105 @@ namespace Mem {
 	std::unordered_map<string, Draw::Meter> disk_meters_free;
 	std::unordered_map<string, Draw::Graph> io_graphs;
 
+	//? Draws the disk list into an arbitrary rectangle. Shared by the mem box, which hosts it in
+	//? its right half, and by the standalone disks box (#918), so there is one implementation.
+	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh,
+	                      bool redraw, bool data_same, const string& box_color) {
+		string out;
+		auto io_mode = Config::getB("io_mode");
+		auto io_graph_combined = Config::getB("io_graph_combined");
+		auto show_io_stat = Config::getB("show_io_stat");
+		auto tty_mode = Config::getB("tty_mode");
+		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_mem"));
+		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
+
+			const auto& disks = mem.disks;
+			int cx = 0; int cy = 0; string divider;
+			bool big_disk = dw >= 25;
+			divider = Mv::l(1) + Theme::c("div_line") + Symbols::div_left + Symbols::h_line * dw + box_color + Fx::ub + Symbols::div_right + Mv::l(dw);
+			const string hu_div = Theme::c("div_line") + Symbols::h_line + Theme::c("main_fg");
+			if (io_mode) {
+				for (const auto& mount : mem.disks_order) {
+					if (not disks.contains(mount)) continue;
+					if (cy > dh - 3) break;
+					const auto disk = safeVal(disks, mount);
+					if (disk.io_read.empty()) continue;
+					const string total = floating_humanizer(disk.total, not big_disk);
+					out += Mv::to(dy+1+cy, dx+1) + divider + Theme::c("title") + Fx::b + uresize(disk.name, dw - 8) + Mv::to(dy+1+cy, dx + dw - total.size())
+						+ trans(total) + Fx::ub;
+					if (big_disk) {
+						const string used_percent = to_string(disk.used_percent);
+						out += Mv::to(dy+1+cy, dx+1 + round((double)dw / 2) - round((double)used_percent.size() / 2) - 1) + hu_div + used_percent + '%' + hu_div;
+					}
+					if (io_graphs.contains(mount + "_activity")) {
+					out += Mv::to(dy+2+cy++, dx+1) + (big_disk ? " IO% " : " IO   " + Mv::l(2)) + Theme::c("inactive_fg") + graph_bg * (dw - 6)
+						+ Mv::l(dw - 6) + io_graphs.at(mount + "_activity")(disk.io_activity, redraw or data_same) + Theme::c("main_fg");
+					}
+					if (++cy > dh - 3) break;
+					if (io_graph_combined) {
+						if (not io_graphs.contains(mount)) continue;
+						auto comb_val = disk.io_read.back() + disk.io_write.back();
+						const string humanized = (disk.io_write.back() > 0 ? "▼"s : ""s) + (disk.io_read.back() > 0 ? "▲"s : ""s)
+												+ (comb_val > 0 ? Mv::r(1) + floating_humanizer(comb_val, true) : "RW");
+						if (disks_io_h == 1) out += Mv::to(dy+1+cy, dx+1) + string(5, ' ');
+						out += Mv::to(dy+1+cy, dx+1) + io_graphs.at(mount)({comb_val}, redraw or data_same)
+							+ Mv::to(dy+1+cy, dx+1) + Theme::c("main_fg") + humanized;
+						cy += disks_io_h;
+					}
+					else {
+						if (not io_graphs.contains(mount + "_read") or not io_graphs.contains(mount + "_write")) continue;
+						const string human_read = (disk.io_read.back() > 0 ? "▲" + floating_humanizer(disk.io_read.back(), true) : "R");
+						const string human_write = (disk.io_write.back() > 0 ? "▼" + floating_humanizer(disk.io_write.back(), true) : "W");
+						if (disks_io_h <= 3) out += Mv::to(dy+1+cy, dx+1) + string(5, ' ') + Mv::to(dy+cy + disks_io_h, dx+1) + string(5, ' ');
+						out += Mv::to(dy+1+cy, dx+1) + io_graphs.at(mount + "_read")(disk.io_read, redraw or data_same) + Mv::l(dw)
+							+ Mv::d(1) + io_graphs.at(mount + "_write")(disk.io_write, redraw or data_same)
+							+ Mv::to(dy+1+cy, dx+1) + human_read + Mv::to(dy+cy + disks_io_h, dx+1) + human_write;
+						cy += disks_io_h;
+					}
+				}
+			}
+			else {
+				for (const auto& mount : mem.disks_order) {
+					if (not disks.contains(mount)) continue;
+					if (cy > dh - 3) break;
+					const auto disk = safeVal(disks, mount);
+					if (disk.name.empty() or not disk_meters_used.contains(mount)) continue;
+					auto comb_val = (not disk.io_read.empty() ? disk.io_read.back() + disk.io_write.back() : 0ll);
+					const string human_io = (comb_val > 0 ? (disk.io_write.back() > 0 and big_disk ? "▼"s : ""s) + (disk.io_read.back() > 0 and big_disk ? "▲"s : ""s)
+											+ floating_humanizer(comb_val, true) : "");
+					const string human_total = floating_humanizer(disk.total, not big_disk);
+					const string human_used = floating_humanizer(disk.used, not big_disk);
+					const string human_free = floating_humanizer(disk.free, not big_disk);
+
+					out += Mv::to(dy+1+cy, dx+1) + divider + Theme::c("title") + Fx::b + uresize(disk.name, dw - 8) + Mv::to(dy+1+cy, dx + dw - human_total.size())
+						+ trans(human_total) + Fx::ub + Theme::c("main_fg");
+					if (big_disk and not human_io.empty())
+						out += Mv::to(dy+1+cy, dx+1 + round((double)dw / 2) - round((double)human_io.size() / 2) - 1) + hu_div + human_io + hu_div;
+					if (++cy > dh - 3) break;
+					if (show_io_stat and io_graphs.contains(mount + "_activity")) {
+						out += Mv::to(dy+1+cy, dx+1) + (big_disk ? " IO% " : " IO   " + Mv::l(2)) + Theme::c("inactive_fg") + graph_bg * (dw - 6) + Theme::g("available").at(clamp(disk.io_activity.back(), 50ll, 100ll))
+							+ Mv::l(dw - 6) + io_graphs.at(mount + "_activity")(disk.io_activity, redraw or data_same) + Theme::c("main_fg");
+						if (not big_disk) out += Mv::to(dy+1+cy, dx+1) + Theme::c("main_fg") + human_io;
+						if (++cy > dh - 3) break;
+					}
+
+					out += Mv::to(dy+1+cy, dx+1) + (big_disk ? " Used:" + rjust(to_string(disk.used_percent) + '%', 4) : "U") + ' '
+						+ disk_meters_used.at(mount)(disk.used_percent) + rjust(human_used, (big_disk ? 9 : 5));
+					if (++cy > dh - 3) break;
+
+					if (disk_meters_free.contains(mount) and cmp_less_equal(disks.size() * 3 + (show_io_stat ? disk_ios : 0), dh - 1)) {
+						out += Mv::to(dy+1+cy, dx+1) + (big_disk ? " Free:" + rjust(to_string(disk.free_percent) + '%', 4) : "F") + ' '
+						+ disk_meters_free.at(mount)(disk.free_percent) + rjust(human_free, (big_disk ? 9 : 5));
+						cy++;
+						if (cmp_less_equal(disks.size() * 4 + (show_io_stat ? disk_ios : 0), dh - 1)) cy++;
+					}
+
+				}
+			}
+			if (cy < dh - 2) out += Mv::to(dy+1+cy, dx+1) + divider;
+				return out;
+	}
+
 	string draw(const mem_info& mem, bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
 		if (force_redraw) redraw = true;
@@ -1489,9 +1588,11 @@ namespace Mem {
 						disk_meters_free[name] = Draw::Meter{disk_meter, "free"};
 				}
 
-				out += Mv::to(y, x + width - 6) + Fx::ub + Theme::c("mem_box") + Symbols::title_left + (io_mode ? Fx::b : "") + Theme::c("hi_fg")
+				//? The io toggle belongs to the disk list, so it follows it onto the standalone box
+				const int io_x = Disks::shown ? Disks::x + Disks::width - 6 : x + width - 6;
+				out += Mv::to(y, io_x) + Fx::ub + Theme::c("mem_box") + Symbols::title_left + (io_mode ? Fx::b : "") + Theme::c("hi_fg")
 				+ 'i' + Theme::c("title") + 'o' + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
-				Input::mouse_mappings["i"] = {y, x + width - 5, 1, 2};
+				Input::mouse_mappings["i"] = {y, io_x + 1, 1, 2};
 			}
 
 		}
@@ -1559,98 +1660,33 @@ namespace Mem {
 		if (graph_height > 0 and cy < height - 2)
 			out += Mv::to(y+1+cy, x+1+cx) + divider;
 
-		//? Disks
-		if (show_disks) {
-			const auto& disks = mem.disks;
-			cx = mem_width; cy = 0;
-			bool big_disk = disks_width >= 25;
-			divider = Mv::l(1) + Theme::c("div_line") + Symbols::div_left + Symbols::h_line * disks_width + Theme::c("mem_box") + Fx::ub + Symbols::div_right + Mv::l(disks_width);
-			const string hu_div = Theme::c("div_line") + Symbols::h_line + Theme::c("main_fg");
-			if (io_mode) {
-				for (const auto& mount : mem.disks_order) {
-					if (not disks.contains(mount)) continue;
-					if (cy > height - 3) break;
-					const auto disk = safeVal(disks, mount);
-					if (disk.io_read.empty()) continue;
-					const string total = floating_humanizer(disk.total, not big_disk);
-					out += Mv::to(y+1+cy, x+1+cx) + divider + Theme::c("title") + Fx::b + uresize(disk.name, disks_width - 8) + Mv::to(y+1+cy, x+cx + disks_width - total.size())
-						+ trans(total) + Fx::ub;
-					if (big_disk) {
-						const string used_percent = to_string(disk.used_percent);
-						out += Mv::to(y+1+cy, x+1+cx + round((double)disks_width / 2) - round((double)used_percent.size() / 2) - 1) + hu_div + used_percent + '%' + hu_div;
-					}
-					if (io_graphs.contains(mount + "_activity")) {
-					out += Mv::to(y+2+cy++, x+1+cx) + (big_disk ? " IO% " : " IO   " + Mv::l(2)) + Theme::c("inactive_fg") + graph_bg * (disks_width - 6)
-						+ Mv::l(disks_width - 6) + io_graphs.at(mount + "_activity")(disk.io_activity, redraw or data_same) + Theme::c("main_fg");
-					}
-					if (++cy > height - 3) break;
-					if (io_graph_combined) {
-						if (not io_graphs.contains(mount)) continue;
-						auto comb_val = disk.io_read.back() + disk.io_write.back();
-						const string humanized = (disk.io_write.back() > 0 ? "▼"s : ""s) + (disk.io_read.back() > 0 ? "▲"s : ""s)
-												+ (comb_val > 0 ? Mv::r(1) + floating_humanizer(comb_val, true) : "RW");
-						if (disks_io_h == 1) out += Mv::to(y+1+cy, x+1+cx) + string(5, ' ');
-						out += Mv::to(y+1+cy, x+1+cx) + io_graphs.at(mount)({comb_val}, redraw or data_same)
-							+ Mv::to(y+1+cy, x+1+cx) + Theme::c("main_fg") + humanized;
-						cy += disks_io_h;
-					}
-					else {
-						if (not io_graphs.contains(mount + "_read") or not io_graphs.contains(mount + "_write")) continue;
-						const string human_read = (disk.io_read.back() > 0 ? "▲" + floating_humanizer(disk.io_read.back(), true) : "R");
-						const string human_write = (disk.io_write.back() > 0 ? "▼" + floating_humanizer(disk.io_write.back(), true) : "W");
-						if (disks_io_h <= 3) out += Mv::to(y+1+cy, x+1+cx) + string(5, ' ') + Mv::to(y+cy + disks_io_h, x+1+cx) + string(5, ' ');
-						out += Mv::to(y+1+cy, x+1+cx) + io_graphs.at(mount + "_read")(disk.io_read, redraw or data_same) + Mv::l(disks_width)
-							+ Mv::d(1) + io_graphs.at(mount + "_write")(disk.io_write, redraw or data_same)
-							+ Mv::to(y+1+cy, x+1+cx) + human_read + Mv::to(y+cy + disks_io_h, x+1+cx) + human_write;
-						cy += disks_io_h;
-					}
-				}
-			}
-			else {
-				for (const auto& mount : mem.disks_order) {
-					if (not disks.contains(mount)) continue;
-					if (cy > height - 3) break;
-					const auto disk = safeVal(disks, mount);
-					if (disk.name.empty() or not disk_meters_used.contains(mount)) continue;
-					auto comb_val = (not disk.io_read.empty() ? disk.io_read.back() + disk.io_write.back() : 0ll);
-					const string human_io = (comb_val > 0 ? (disk.io_write.back() > 0 and big_disk ? "▼"s : ""s) + (disk.io_read.back() > 0 and big_disk ? "▲"s : ""s)
-											+ floating_humanizer(comb_val, true) : "");
-					const string human_total = floating_humanizer(disk.total, not big_disk);
-					const string human_used = floating_humanizer(disk.used, not big_disk);
-					const string human_free = floating_humanizer(disk.free, not big_disk);
-
-					out += Mv::to(y+1+cy, x+1+cx) + divider + Theme::c("title") + Fx::b + uresize(disk.name, disks_width - 8) + Mv::to(y+1+cy, x+cx + disks_width - human_total.size())
-						+ trans(human_total) + Fx::ub + Theme::c("main_fg");
-					if (big_disk and not human_io.empty())
-						out += Mv::to(y+1+cy, x+1+cx + round((double)disks_width / 2) - round((double)human_io.size() / 2) - 1) + hu_div + human_io + hu_div;
-					if (++cy > height - 3) break;
-					if (show_io_stat and io_graphs.contains(mount + "_activity")) {
-						out += Mv::to(y+1+cy, x+1+cx) + (big_disk ? " IO% " : " IO   " + Mv::l(2)) + Theme::c("inactive_fg") + graph_bg * (disks_width - 6) + Theme::g("available").at(clamp(disk.io_activity.back(), 50ll, 100ll))
-							+ Mv::l(disks_width - 6) + io_graphs.at(mount + "_activity")(disk.io_activity, redraw or data_same) + Theme::c("main_fg");
-						if (not big_disk) out += Mv::to(y+1+cy, x+cx+1) + Theme::c("main_fg") + human_io;
-						if (++cy > height - 3) break;
-					}
-
-					out += Mv::to(y+1+cy, x+1+cx) + (big_disk ? " Used:" + rjust(to_string(disk.used_percent) + '%', 4) : "U") + ' '
-						+ disk_meters_used.at(mount)(disk.used_percent) + rjust(human_used, (big_disk ? 9 : 5));
-					if (++cy > height - 3) break;
-
-					if (disk_meters_free.contains(mount) and cmp_less_equal(disks.size() * 3 + (show_io_stat ? disk_ios : 0), height - 1)) {
-						out += Mv::to(y+1+cy, x+1+cx) + (big_disk ? " Free:" + rjust(to_string(disk.free_percent) + '%', 4) : "F") + ' '
-						+ disk_meters_free.at(mount)(disk.free_percent) + rjust(human_free, (big_disk ? 9 : 5));
-						cy++;
-						if (cmp_less_equal(disks.size() * 4 + (show_io_stat ? disk_ios : 0), height - 1)) cy++;
-					}
-
-				}
-			}
-			if (cy < height - 2) out += Mv::to(y+1+cy, x+1+cx) + divider;
-		}
+		//? Disks. Skipped when the standalone disks box is shown, which draws them itself.
+		if (show_disks and not Disks::shown)
+			out += draw_disk_list(mem, x + mem_width, y, disks_width, height, redraw, data_same, Theme::c("mem_box"));
 
 		redraw = false;
 		return out + Fx::reset;
 	}
 
+}
+
+namespace Disks {
+	int width_p = 45, height_p = 40;
+	int min_width = 20, min_height = 6;
+	int x = 1, y = 1, width = 20, height = 6;
+	bool shown = false, redraw = true;
+	string box;
+
+	string draw(const Mem::mem_info& mem, bool force_redraw, bool data_same) {
+		if (Runner::stopping) return "";
+		if (force_redraw) redraw = true;
+		string out;
+		out.reserve(width * height);
+		if (redraw) out += box;
+		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"));
+		redraw = false;
+		return out + Fx::reset;
+	}
 }
 
 namespace Net {
@@ -2549,6 +2585,8 @@ namespace Draw {
 		}
 	#endif
 		Mem::shown = boxes.contains("mem");
+		//? "disks" also matches nothing else in the box list, so a plain contains() is safe here
+		Disks::shown = boxes.contains("disks");
 		Net::shown = boxes.contains("net");
 		Proc::shown = boxes.contains("proc");
 
@@ -2713,8 +2751,9 @@ namespace Draw {
 			4, max(5, lower_avail - 4)) : 0;
 	#endif
 
-		//* Calculate and draw mem box outlines
-		if (Mem::shown) {
+		//* Calculate and draw mem box outlines. Also runs for a standalone disks box on its own,
+		//* because the slot geometry and every disk meter are computed here.
+		if (Mem::shown or Disks::shown) {
 			using namespace Mem;
 			auto show_disks = Config::getB("show_disks");
 			auto swap_disk = Config::getB("swap_disk");
@@ -2750,8 +2789,20 @@ namespace Draw {
 			if (show_disks) {
 				mem_width = ceil((double)(width - 3) / 2);
 				mem_width += mem_width % 2;
-				disks_width = width - mem_width - 2;
-				divider = x + mem_width;
+				//? Standalone disks box (#918): decide its rectangle first, since the meter widths
+				//? below are derived from it. mem then shrinks to just its own share.
+				if (Disks::shown) {
+					if (not Mem::shown) mem_width = 0;   //? disks takes the whole slot
+					Disks::x = x + mem_width + (Mem::shown ? 1 : 0);
+					Disks::y = y;
+					Disks::width = width - mem_width - (Mem::shown ? 1 : 0);
+					Disks::height = height;
+					disks_width = Disks::width - 2;
+				}
+				else {
+					disks_width = width - mem_width - 2;
+					divider = x + mem_width;
+				}
 			}
 			else
 				mem_width = width - 1;
@@ -2779,11 +2830,22 @@ namespace Draw {
 				if (disks_width < 25) disk_meter += 14;
 			}
 
-			box = createBox(x, y, width, height, Theme::c("mem_box"), true, "mem", "", 2);
-			box += Mv::to(y, (show_disks ? divider + 2 : x + width - 9)) + Theme::c("mem_box") + Symbols::title_left + (show_disks ? Fx::b : "")
-				+ Theme::c("hi_fg") + 'd' + Theme::c("title") + "isks" + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
-			Input::mouse_mappings["d"] = {y, (show_disks ? divider + 3 : x + width - 8), 1, 5};
-			if (show_disks) {
+			//? Standalone disks box (#918): mem keeps the left share and disks becomes a box of its
+			//? own on the right, rather than a divided-off half of this one.
+			if (Disks::shown) {
+				Disks::redraw = true;
+				Disks::box = createBox(Disks::x, Disks::y, Disks::width, Disks::height,
+					Theme::c("mem_box"), true, "disks", "", 6);
+				width = mem_width + 1;
+			}
+
+			box = Mem::shown ? createBox(x, y, width, height, Theme::c("mem_box"), true, "mem", "", 2) : "";
+			if (Mem::shown and not Disks::shown) {
+				box += Mv::to(y, (show_disks ? divider + 2 : x + width - 9)) + Theme::c("mem_box") + Symbols::title_left + (show_disks ? Fx::b : "")
+					+ Theme::c("hi_fg") + 'd' + Theme::c("title") + "isks" + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
+				Input::mouse_mappings["d"] = {y, (show_disks ? divider + 3 : x + width - 8), 1, 5};
+			}
+			if (show_disks and not Disks::shown) {
 				box += Mv::to(y, divider) + Symbols::div_up + Mv::to(y + height - 1, divider) + Symbols::div_down + Theme::c("div_line");
 				for (auto i : iota(1, height - 1))
 					box += Mv::to(y + i, divider) + Symbols::v_line;
@@ -2802,8 +2864,11 @@ namespace Draw {
 			x = (proc_left and Proc::shown) ? Term::width - width + 1 : 1;
 
 			if (rows_layout) {
-				width = Mem::shown ? (int)Term::width - Mem::width : (int)Term::width;
-				x = Mem::shown ? Mem::width + 1 : 1;
+				//? mem may have handed part of its slot to the standalone disks box; net starts
+				//? after both, not after mem alone.
+				const int left = (Mem::shown ? Mem::width : 0) + (Disks::shown ? Disks::width : 0);
+				width = left > 0 ? (int)Term::width - left : (int)Term::width;
+				x = left + 1;
 				height = rows_row_h;
 			}
 			if (mem_below_net and Mem::shown)

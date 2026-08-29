@@ -119,6 +119,8 @@ namespace Term {
 	auto get_min_size(const string& boxes) -> array<int, 2> {
         bool cpu = boxes.find("cpu") != string::npos;
         bool mem = boxes.find("mem") != string::npos;
+        //? The disks box occupies the mem slot, so it carries mem's minimums rather than its own
+        bool disks = boxes.find("disks") != string::npos;
         bool net = boxes.find("net") != string::npos;
         bool proc = boxes.find("proc") != string::npos;
 	#ifdef GPU_SUPPORT
@@ -128,7 +130,7 @@ namespace Term {
         		gpu += (boxes.contains("gpu"s + i) ? 1 : 0);
 	#endif
         int width = 0;
-		if (mem) width = Mem::min_width;
+		if (mem or disks) width = Mem::min_width;
 		else if (net) width = Mem::min_width;
 		width += (proc ? Proc::min_width : 0);
 		if (cpu and width < Cpu::min_width) width = Cpu::min_width;
@@ -138,7 +140,7 @@ namespace Term {
 
 		int height = (cpu ? Cpu::min_height : 0);
 		if (proc) height += Proc::min_height;
-		else height += (mem ? Mem::min_height : 0) + (net ? Net::min_height : 0);
+		else height += ((mem or disks) ? Mem::min_height : 0) + (net ? Net::min_height : 0);
 	#ifdef GPU_SUPPORT
 		for (int i = 0; i < gpu; i++)
 			height += Gpu::gpu_b_height_offsets[i] + 4;

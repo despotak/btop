@@ -239,11 +239,11 @@ namespace Input {
 				else if (key.size() == 1 and isint(key)) {
 					auto intKey = std::atoi(key.data());
 				#ifdef GPU_SUPPORT
-					static const array<string, 10> boxes = {"gpu5", "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4"};
+					static const array<string, 11> boxes = {"gpu5", "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "disks"};
 					if ((intKey == 0 and Gpu::count < 5) or (intKey >= 5 and intKey - 4 > Gpu::count))
 						return;
 				#else
-				static const array<string, 10> boxes = {"", "cpu", "mem", "net", "proc"};
+				static const array<string, 11> boxes = {"", "cpu", "mem", "net", "proc", "", "", "", "", "", "disks"};
 					if (intKey == 0 or intKey > 4)
 						return;
 				#endif

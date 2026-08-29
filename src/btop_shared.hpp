@@ -337,6 +337,17 @@ namespace Mem {
 
 }
 
+//* Standalone disks box (#918). Owns geometry only: the disk data lives in Mem::mem_info and the
+//* meters and graphs are sized in Mem, so this box renders through Mem::draw_disk_list.
+namespace Disks {
+	extern int width_p, height_p;
+	extern int min_width, min_height;
+	extern int x, y, width, height;
+	extern bool shown, redraw;
+	extern string box;
+	string draw(const Mem::mem_info& mem, bool force_redraw = false, bool data_same = false);
+}
+
 namespace Net {
 	extern string box;
 	extern int x, y, width, height, min_width, min_height;

@@ -50,7 +50,7 @@ using namespace Tools;
 const vector<string> Config::valid_graph_symbols = { "braille", "block", "block2", "tty" };
 const vector<string> Config::valid_graph_symbols_def = { "default", "braille", "block", "block2", "tty" };
 const vector<string> Config::valid_boxes = {
-	"cpu", "mem", "net", "proc"
+	"cpu", "mem", "disks", "net", "proc"
 #ifdef GPU_SUPPORT
 	,"gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "gpu5"
 #endif
@@ -522,7 +522,7 @@ namespace Config {
 					validError = "Malformatted preset in config value presets!";
 					return false;
 				}
-				if (not is_in(vals.at(0), "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "gpu5")) {
+				if (not is_in(vals.at(0), "cpu", "mem", "disks", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "gpu5")) {
 					validError = "Invalid box name in config value presets!";
 					return false;
 				}

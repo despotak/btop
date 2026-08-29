@@ -583,8 +583,9 @@ namespace Runner {
 					}
 				}
 			#endif
-				//? MEM
-				if (v_contains(conf.boxes, "mem")) {
+				//? MEM / DISKS. One collect feeds both: the disks box renders Mem::mem_info::disks,
+				//? so it needs the mem data even when the mem box itself is hidden.
+				if (v_contains(conf.boxes, "mem") or v_contains(conf.boxes, "disks")) {
 					try {
 						if (Global::debug) debug_timer("mem", collect_begin);
 
@@ -594,7 +595,10 @@ namespace Runner {
 						if (Global::debug) debug_timer("mem", draw_begin);
 
 						//? Draw box
-						if (not pause_output) output += Mem::draw(mem, conf.force_redraw, conf.no_update);
+						if (not pause_output) {
+							if (Mem::shown) output += Mem::draw(mem, conf.force_redraw, conf.no_update);
+							if (Disks::shown) output += Disks::draw(mem, conf.force_redraw, conf.no_update);
+						}
 
 						if (Global::debug) debug_timer("mem", draw_done);
 					}
