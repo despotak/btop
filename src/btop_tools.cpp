@@ -142,7 +142,15 @@ namespace Term {
 		if (proc) height += Proc::min_height;
 		else height += ((mem or disks) ? Mem::min_height : 0) + (net ? Net::min_height : 0);
 	#ifdef GPU_SUPPORT
-		for (int i = 0; i < gpu; i++)
+		//? Beside the cpu box the gpu panels take width from it rather than height, so they add
+		//? nothing to the minimum. Width still has to cover both.
+		if (cpu and gpu > 0 and Config::getB("gpu_beside_cpu")) {
+			int gpu_min = 0;
+			for (int i = 0; i < gpu; i++) gpu_min = std::max(gpu_min, Gpu::gpu_b_height_offsets[i] + 4);
+			height = std::max(height, gpu_min + (cpu ? 0 : 0));
+			width = std::max(width, Cpu::min_width + Gpu::min_width);
+		}
+		else for (int i = 0; i < gpu; i++)
 			height += Gpu::gpu_b_height_offsets[i] + 4;
 	#endif
 

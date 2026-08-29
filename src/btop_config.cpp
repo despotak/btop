@@ -280,6 +280,8 @@ namespace Config {
 		{"rsmi_measure_pcie_speeds",
 								"#* Measure PCIe throughput on AMD cards, may impact performance on certain cards."},
 		{"gpu_mirror_graph",	"#* Horizontally mirror the GPU graph."},
+		{"gpu_beside_cpu",		"#* Put the GPU boxes to the right of the CPU box instead of below it.\n#* Useful on a wide, short display, where the CPU box leaves most of its width to a graph."},
+
 
 		{"proc_gpu_device",	"#* Which GPU the process box's Gpu% and GMem columns report on. -1 sums every device,\n#* 0 and up scope the columns to that GPU alone, numbered as the gpu0/gpu1 boxes are.\n#* Scoping needs a backend that attributes memory per process, so the /proc/[pid]/fdinfo\n#* fallback is skipped while it is set and non-NVIDIA devices report nothing."},
 
@@ -407,6 +409,7 @@ namespace Config {
 		{"nvml_measure_pcie_speeds", true},
 		{"rsmi_measure_pcie_speeds", true},
 		{"gpu_mirror_graph", true},
+		{"gpu_beside_cpu", false},
 	#endif
 		{"terminal_sync", true},
 		{"save_config_on_exit", true},

@@ -2711,11 +2711,15 @@ namespace Draw {
 
 		// Calculate the minimum possible GPU height, store in total_height
 		// The actual total_height value will of course be overwritten later
+		//? Beside the cpu box the gpu panels take width, not height, so the lower area must not
+		//? have their height subtracted from it.
+		const bool gpu_beside = Config::getB("gpu_beside_cpu") and Cpu::shown and Gpu::shown > 0;
 		Gpu::total_height = 0;
-		for (int i = 0; i < Gpu::shown; i++) {
-			using namespace Gpu;
-			total_height += 4 + gpu_b_height_offsets[shown_panels[i]];
-		}
+		if (not gpu_beside)
+			for (int i = 0; i < Gpu::shown; i++) {
+				using namespace Gpu;
+				total_height += 4 + gpu_b_height_offsets[shown_panels[i]];
+			}
 	#endif
 		Mem::shown = boxes.contains("mem");
 		//? "disks" also matches nothing else in the box list, so a plain contains() is safe here
@@ -2735,11 +2739,18 @@ namespace Draw {
 		#endif
             const bool show_temp = (Config::getB("check_temp") and got_sensors);
 			width = round((double)Term::width * width_p / 100);
+			//? Beside mode: hand part of the width to the gpu panels. The cpu box keeps its info
+			//? block (capped at 65 columns anyway) and gives up graph width, which is the space
+			//? that was going to waste on a wide display.
+			if (gpu_beside) width = max(Cpu::min_width, (int)round((double)Term::width * 0.55));
 		#ifdef GPU_SUPPORT
 			if (Gpu::shown != 0 and not (Mem::shown or Net::shown or Proc::shown)) {
 				height = Term::height - Gpu::total_height - gpus_extra_height;
 			} else {
-				height = max(8, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p/(Gpu::shown+1) + (Gpu::shown != 0)*5) / 100));
+				//? Beside the cpu box the gpu panels do not stack under it, so cpu keeps the share it
+				//? would have had with no gpu box at all rather than dividing it by the gpu count.
+				height = max(8, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100
+					: (gpu_beside ? height_p : height_p/(Gpu::shown+1) + (Gpu::shown != 0)*5)) / 100));
 			}
 			if (height <= Term::height-gpus_extra_height) height += gpus_extra_height;
 		#else
@@ -2814,6 +2825,31 @@ namespace Draw {
 			proc_rows_vec.resize(shown);
 			redraw.resize(shown);
 			total_height = 0;
+			//? Beside mode: the cpu box gives up part of its width and the gpu panels stack inside
+			//? its rows. Everything below is untouched, so the lower boxes keep their full height.
+			if (gpu_beside) {
+				const int gpu_w = (int)Term::width - Cpu::width;
+				int used = 0;
+				for (auto i = 0; i < shown; ++i) {
+					redraw[i] = true;
+					const int h = (i == shown - 1) ? Cpu::height - used : Cpu::height / shown;
+					x_vec[i] = Cpu::width + 1;
+					y_vec[i] = (Config::getB("cpu_bottom") ? 1 : 1) + used;
+					b_height_vec[i] = gpu_b_height_offsets[shown_panels[i]] + 2;
+					b_width = clamp(gpu_w / 2, min_width, 65);
+					b_x_vec[i] = x_vec[i] + gpu_w - b_width - 1;
+					b_y_vec[i] = y_vec[i] + ceil((double)(h - 2 - b_height_vec[i]) / 2) + 1;
+					box[i] = createBox(x_vec[i], y_vec[i], gpu_w, h, Theme::c("cpu_box"), true,
+						std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+6)%10);
+					string name = Config::getS(std::string("custom_gpu_name") + (char)(shown_panels[i]+'0'));
+					if (name.empty()) name = gpu_names[shown_panels[i]];
+					box[i] += createBox(b_x_vec[i], b_y_vec[i], b_width, b_height_vec[i], "", false, name.substr(0, b_width-5));
+					b_height_vec[i] = h - 2;
+					width = gpu_w;
+					used += h;
+				}
+			}
+			else
 			for (auto i = 0; i < shown; ++i) {
 				redraw[i] = true;
 				int height = 0;
