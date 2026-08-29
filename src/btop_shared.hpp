@@ -185,6 +185,8 @@ namespace Gpu {
 		long long encoder_utilization = 0;
 		long long decoder_utilization = 0;
 
+		long long fan_speed = -1;   //? percent, -1 when the device does not report one
+
 		gpu_info_supported supported_functions;
 
 		//? Processes holding memory on this device, sorted by memory descending.
@@ -221,6 +223,8 @@ namespace Cpu {
 	extern int x, y, width, height, min_width, min_height;
 	extern bool shown, redraw, got_sensors, cpu_temp_only, has_battery, supports_watts;
 	extern string cpuName, cpuHz;
+	//? Highest non-zero fan reading found under /sys/class/hwmon, 0 when none. See show_fan_speed.
+	extern long long fanRpm;
 	extern vector<string> available_fields;
 	extern vector<string> available_sensors;
 	extern tuple<int, float, long, string> current_bat;
@@ -269,6 +273,8 @@ namespace Cpu {
 	extern std::unordered_map<int, int> core_mapping;
 
 	auto get_cpuHz() -> string;
+	//? Discover readable hwmon fan inputs; fills Cpu::fanRpm on each collect
+	void get_fans();
 
 	//* Get battery info from /sys
 	auto get_battery() -> tuple<int, float, long, string>;

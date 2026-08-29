@@ -331,6 +331,7 @@ namespace Gpu {
 		nvmlReturn_t (*nvmlDeviceGetClockInfo)(nvmlDevice_t, nvmlClockType_t, unsigned int*);
 		nvmlReturn_t (*nvmlDeviceGetPowerUsage)(nvmlDevice_t, unsigned int*);
 		nvmlReturn_t (*nvmlDeviceGetPowerState)(nvmlDevice_t, nvmlPstates_t*);
+		nvmlReturn_t (*nvmlDeviceGetFanSpeed)(nvmlDevice_t, unsigned int*);
 		nvmlReturn_t (*nvmlDeviceGetTemperature)(nvmlDevice_t, nvmlTemperatureSensors_t, unsigned int*);
 		nvmlReturn_t (*nvmlDeviceGetMemoryInfo)(nvmlDevice_t, nvmlMemory_t*);
 			nvmlReturn_t (*nvmlDeviceGetPcieThroughput)(nvmlDevice_t, nvmlPcieUtilCounter_t, unsigned int*);
@@ -523,6 +524,7 @@ namespace Shared {
 		}
 		Cpu::cpuName = Cpu::get_cpuName();
 		Cpu::got_sensors = Cpu::get_sensors();
+		Cpu::get_fans();
 		for (const auto& [sensor, ignored] : Cpu::found_sensors) {
 			Cpu::available_sensors.push_back(sensor);
 		}
@@ -583,6 +585,8 @@ namespace Shared {
 namespace Cpu {
 	string cpuName;
 	string cpuHz;
+	long long fanRpm{};
+	vector<fs::path> fan_paths;
 	bool has_battery = true;
 	tuple<int, float, long, string> current_bat;
 
@@ -636,6 +640,25 @@ namespace Cpu {
 		}
 
 		return name;
+	}
+
+	//? Fan inputs live in the same hwmon tree the temperature sensors are found in. Collect the
+	//? readable ones once; Cpu::collect() reports the fastest of them, since a stopped fan says
+	//? less than a spinning one on boards that expose several headers.
+	void get_fans() {
+		fan_paths.clear();
+		std::error_code ec;
+		if (not fs::exists("/sys/class/hwmon", ec) or ec) return;
+		for (const auto& dir : fs::directory_iterator("/sys/class/hwmon", fs::directory_options::skip_permission_denied, ec)) {
+			if (ec) break;
+			for (const auto& file : fs::directory_iterator(dir.path(), fs::directory_options::skip_permission_denied, ec)) {
+				if (ec) break;
+				const auto name = file.path().filename().string();
+				if (name.starts_with("fan") and name.ends_with("_input")
+					and access(file.path().c_str(), R_OK) != -1)
+					fan_paths.push_back(file.path());
+			}
+		}
 	}
 
 	bool get_sensors() {
@@ -1264,6 +1287,19 @@ namespace Cpu {
 		if (Config::getB("show_cpu_freq"))
 			cpuHz = get_cpuHz();
 
+			//? Fastest reported fan. Cheap: a handful of small reads, only while the option is on.
+			if (Config::getB("show_fan_speed")) {
+				long long fastest = 0;
+				for (const auto& path : fan_paths) {
+					if (ifstream f{path}; f.good()) {
+						long long rpm{};
+						if (f >> rpm and rpm > fastest) fastest = rpm;
+					}
+				}
+				fanRpm = fastest;
+			}
+			else fanRpm = 0;
+
 		if (getloadavg(cpu.load_avg.data(), cpu.load_avg.size()) < 0) {
 			Logger::error("failed to get load averages");
 		}
@@ -1472,6 +1508,7 @@ namespace Gpu {
 			LOAD_SYM(nvmlDeviceGetEncoderUtilization);
 			LOAD_SYM(nvmlDeviceGetDecoderUtilization);
 			nvmlDeviceGetProcessUtilization = (decltype(nvmlDeviceGetProcessUtilization))try_load_nvml_sym("nvmlDeviceGetProcessUtilization");
+			nvmlDeviceGetFanSpeed = (decltype(nvmlDeviceGetFanSpeed))try_load_nvml_sym("nvmlDeviceGetFanSpeed");
 			nvmlDeviceGetGraphicsRunningProcesses_v1 = (decltype(nvmlDeviceGetGraphicsRunningProcesses_v1))try_load_nvml_sym("nvmlDeviceGetGraphicsRunningProcesses");
 			nvmlDeviceGetGraphicsRunningProcesses_v2 = (decltype(nvmlDeviceGetGraphicsRunningProcesses_v2))try_load_nvml_sym("nvmlDeviceGetGraphicsRunningProcesses_v2");
 			nvmlDeviceGetGraphicsRunningProcesses_v3 = (decltype(nvmlDeviceGetGraphicsRunningProcesses_v3))try_load_nvml_sym("nvmlDeviceGetGraphicsRunningProcesses_v3");
@@ -1580,6 +1617,14 @@ namespace Gpu {
         			if (result != NVML_SUCCESS)
     					Logger::warning("NVML: Failed to get maximum GPU temperature, defaulting to 110°C: {}", nvmlErrorString(result));
     				else gpus[i].temp_max = (long long)temp_max;
+				}
+
+				//? Fan speed, as a percentage of maximum. Not every board reports one (passive cards,
+				//? and some laptop designs where the fan is on the system controller).
+				if (nvmlDeviceGetFanSpeed != nullptr) {
+					unsigned int fan_pct{};
+					gpus_slice[i].fan_speed = (nvmlDeviceGetFanSpeed(devices[i], &fan_pct) == NVML_SUCCESS)
+						? (long long)fan_pct : -1;
 				}
 
 				//? PCIe link speeds, the data collection takes >=20ms each call so they run on separate threads

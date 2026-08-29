@@ -194,6 +194,10 @@ namespace Config {
 
 		{"base_10_sizes",		"#* Use base 10 for bits/bytes sizes, KB = 1000 instead of KiB = 1024."},
 
+		{"show_fan_speed",		"#* Show the fastest fan reported under /sys/class/hwmon next to the CPU frequency,\n#* and the GPU fan percentage in the GPU box. Nothing is shown when no fan is readable."},
+		{"fan_symbol",			"#* Label drawn before a fan reading. Defaults to the word so it works in any font;\n#* set it to a glyph if your font has one, e.g. the Nerd Font fan at U+F0210."},
+
+
 		{"show_cpu_freq", 		"#* Show CPU frequency."},
 	#ifdef __linux__
 		{"freq_mode",				"#* How to calculate CPU frequency, available values: \"first\", \"range\", \"lowest\", \"highest\" and \"average\"."},
@@ -324,6 +328,7 @@ namespace Config {
 		{"custom_gpu_name4", ""},
 		{"custom_gpu_name5", ""},
 		{"show_gpu_info", "Auto"},
+		{"fan_symbol", "FAN"},
 		{"gpu_processes", "Auto"},
 		{"shown_gpus", "nvidia amd intel apple"}
 	#endif
@@ -354,6 +359,7 @@ namespace Config {
 		{"check_temp", true},
 		{"show_coretemp", true},
 		{"show_cpu_freq", true},
+		{"show_fan_speed", false},
 		{"background_update", true},
 		{"mem_graphs", true},
 		{"mem_below_net", false},

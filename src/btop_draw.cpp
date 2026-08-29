@@ -933,10 +933,15 @@ namespace Cpu {
 		#endif
 
 			//? Cpu clock and cpu meter
-			if (Config::getB("show_cpu_freq") and not cpuHz.empty())
-				out += Mv::to(b_y, b_x + b_width - (freq_range ? 20 : 10)) + Fx::ub + Theme::c("div_line")
+			if (Config::getB("show_cpu_freq") and not cpuHz.empty()) {
+				//? #1001 asks for the fan next to the clock: "1.9 GHz / 3200 RPM"
+				const string freq_str = cpuHz
+					+ (fanRpm > 0 ? " " + Config::getS("fan_symbol") + " " + to_string(fanRpm) : "");
+				const int extra = (int)freq_str.size() - (int)cpuHz.size();
+				out += Mv::to(b_y, b_x + b_width - (freq_range ? 20 : 10) - extra) + Fx::ub + Theme::c("div_line")
 					+ Symbols::h_line * ((freq_range ? 17 : 7) - cpuHz.size())
-					+ Symbols::title_left + Fx::b + Theme::c("title") + cpuHz + Fx::ub + Theme::c("div_line") + Symbols::title_right;
+					+ Symbols::title_left + Fx::b + Theme::c("title") + freq_str + Fx::ub + Theme::c("div_line") + Symbols::title_right;
+			}
 
 			out += Mv::to(b_y + 1, b_x + 1) + Theme::c("main_fg") + Fx::b + "CPU " + cpu_meter(safeVal(cpu.cpu_percent, "total"s).back())
 				+ Theme::g("cpu").at(clamp(safeVal(cpu.cpu_percent, "total"s).back(), 0ll, 100ll)) + rjust(to_string(safeVal(cpu.cpu_percent, "total"s).back()), 4) + Theme::c("main_fg") + '%';
@@ -1204,7 +1209,8 @@ namespace Gpu {
 			if (gpu.supported_functions.temp_info)
 				temp_graph = Draw::Graph{6, 1, "temp", gpu.temp, graph_symbol, false, false, gpu.temp_max, -23};
 			if (gpu.supported_functions.pwr_usage)
-				pwr_meter = Draw::Meter{b_width - (gpu.supported_functions.pwr_state and gpu.pwr_state != 32 ? 25 : 12), "cached"};
+				pwr_meter = Draw::Meter{b_width - (gpu.supported_functions.pwr_state and gpu.pwr_state != 32 ? 25 : 12)
+					- ((Config::getB("show_fan_speed") and gpu.fan_speed >= 0) ? 9 : 0), "cached"};
 			if (gpu.supported_functions.mem_utilization)
 				mem_util_graph = Draw::Graph{b_width/2 - 1, 2, "free", gpu.mem_utilization_percent, graph_symbol, 0, 0, 100, 4}; // offset so the graph isn't empty at 0-5% utilization
 			if (gpu.supported_functions.mem_used and gpu.supported_functions.mem_total)
@@ -1249,6 +1255,11 @@ namespace Gpu {
 				+ fmt::format("{:>5.{}f}", gpu.pwr_usage / 1000.0, gpu.pwr_usage < 10'000 ? 2 : gpu.pwr_usage < 100'000 ? 1 : 0) + Theme::c("main_fg") + 'W';
 			if (gpu.supported_functions.pwr_state and gpu.pwr_state != 32) // NVML_PSTATE_UNKNOWN; unsupported or non-nvidia card
 				out += std::string(" P-state: ") + (gpu.pwr_state > 9 ? "" : " ") + 'P' + Theme::g("cached").at(clamp(gpu.pwr_state, 0ll, 100ll)) + to_string(gpu.pwr_state);
+			//? #1001, GPU half: NVML reports fan duty as a percentage of maximum
+			if (Config::getB("show_fan_speed") and gpu.fan_speed >= 0)
+				out += Theme::c("main_fg") + Fx::b + ' ' + Config::getS("fan_symbol")
+					+ Theme::g("cpu").at(clamp(gpu.fan_speed, 0ll, 100ll)) + rjust(to_string(gpu.fan_speed), 4)
+					+ Theme::c("main_fg") + '%';
 			rows_used++;
 		}
 
@@ -2607,6 +2618,7 @@ namespace Draw {
 			const string cpu_title = uresize(
 					(custom.empty() ? Cpu::cpuName : custom),
 					b_width - (Config::getB("show_cpu_freq") and hasCpuHz ? (freq_range ? 24 : 14) : 5)
+						- (Cpu::fanRpm > 0 ? 10 : 0)
 			);
 			box += createBox(b_x, b_y, b_width, b_height, "", false, cpu_title);
 		}
