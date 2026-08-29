@@ -1877,10 +1877,10 @@ namespace Net {
 		if (force_redraw) redraw = true;
 		if (redraw) graphs.clear();
 
-		//? How many panes actually fit. At 7 rows a pane keeps both rate readouts and drops the
-		//? Total lines; under that it clips, so 7 is the floor.
+		//? How many panes actually fit. Six rows leaves a four row stat box, which is exactly the
+		//? two rate lines; seven adds the totals beside them, eight gives each its own line.
 		const int want = clamp(Config::getI("net_interfaces"), 1, 4);
-		int panes = clamp(height / 7, 1, want);
+		int panes = clamp(height / 6, 1, want);
 
 		//? Pane 0 is the selected interface; the rest follow it in the interface list, loopback last
 		shown_ifaces.clear();
