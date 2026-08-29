@@ -116,7 +116,7 @@ namespace Term {
 		return false;
 	}
 
-	auto get_min_size(const string& boxes) -> array<int, 2> {
+	auto get_min_size(const string& boxes, std::optional<bool> gpu_beside) -> array<int, 2> {
         bool cpu = boxes.find("cpu") != string::npos;
         bool mem = boxes.find("mem") != string::npos;
         //? The disks box occupies the mem slot, so it carries mem's minimums rather than its own
@@ -144,7 +144,7 @@ namespace Term {
 	#ifdef GPU_SUPPORT
 		//? Beside the cpu box the gpu panels take width from it rather than height, so they add
 		//? nothing to the minimum. Width still has to cover both.
-		if (cpu and gpu > 0 and Config::getB("gpu_beside_cpu")) {
+		if (cpu and gpu > 0 and gpu_beside.value_or(Config::getB("gpu_beside_cpu"))) {
 			int gpu_min = 0;
 			for (int i = 0; i < gpu; i++) gpu_min = std::max(gpu_min, Gpu::gpu_b_height_offsets[i] + 4);
 			height = std::max(height, gpu_min + (cpu ? 0 : 0));

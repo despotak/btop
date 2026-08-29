@@ -562,7 +562,16 @@ namespace Config {
 		}
 		if (not boxes.empty()) boxes.pop_back();
 
-		auto min_size = Term::get_min_size(boxes);
+		//? The gpu box beside the cpu box is the difference between needing 41 rows and 32, and it
+		//? is the preset that decides it - measuring with the flag still at its old value rejected
+		//? the very preset written to fit a short terminal.
+		std::optional<bool> gpu_beside;
+		for (const auto& box : ssplit(preset, ',')) {
+			const auto& vals = ssplit(box, ':');
+			if (vals.size() > 1 and vals.at(0).starts_with("gpu")) gpu_beside = (vals.at(1) == "1");
+		}
+
+		auto min_size = Term::get_min_size(boxes, gpu_beside);
 		if (Term::width < min_size.at(0) or Term::height < min_size.at(1)) {
 			return false;
 		}

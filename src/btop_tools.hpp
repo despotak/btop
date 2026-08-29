@@ -22,6 +22,7 @@ tab-size = 4
 # define BTOP_DEBUG
 #endif
 
+#include <optional>
 #include <algorithm>        // for std::ranges::count_if
 #include <array>
 #include <atomic>
@@ -150,7 +151,8 @@ namespace Term {
 	bool refresh(bool only_check=false);
 
 	//* Returns an array with the lowest possible width, height with current box config
-	auto get_min_size(const string& boxes) -> array<int, 2>;
+	//? gpu_beside overrides the config flag, for callers testing a layout that is not live yet
+	auto get_min_size(const string& boxes, std::optional<bool> gpu_beside = {}) -> array<int, 2>;
 
 	//* Check for a valid tty, save terminal options and set new options
 	bool init();
