@@ -937,9 +937,10 @@ namespace Cpu {
 				//? #1001 asks for the fan next to the clock: "1.9 GHz / 3200 RPM"
 				const string freq_str = cpuHz
 					+ (fanRpm > 0 ? " " + Config::getS("fan_symbol") + " " + to_string(fanRpm) : "");
-				const int extra = (int)freq_str.size() - (int)cpuHz.size();
+				//? ulen, not size: the symbol may be a multi-byte glyph occupying one column
+				const int extra = (int)ulen(freq_str) - (int)ulen(cpuHz);
 				out += Mv::to(b_y, b_x + b_width - (freq_range ? 20 : 10) - extra) + Fx::ub + Theme::c("div_line")
-					+ Symbols::h_line * ((freq_range ? 17 : 7) - cpuHz.size())
+					+ Symbols::h_line * ((freq_range ? 17 : 7) - ulen(cpuHz))
 					+ Symbols::title_left + Fx::b + Theme::c("title") + freq_str + Fx::ub + Theme::c("div_line") + Symbols::title_right;
 			}
 
@@ -1209,8 +1210,10 @@ namespace Gpu {
 			if (gpu.supported_functions.temp_info)
 				temp_graph = Draw::Graph{6, 1, "temp", gpu.temp, graph_symbol, false, false, gpu.temp_max, -23};
 			if (gpu.supported_functions.pwr_usage)
+				//? " " + symbol + rjust(value, 4) + "%"
 				pwr_meter = Draw::Meter{b_width - (gpu.supported_functions.pwr_state and gpu.pwr_state != 32 ? 25 : 12)
-					- ((Config::getB("show_fan_speed") and gpu.fan_speed >= 0) ? 9 : 0), "cached"};
+					- ((Config::getB("show_fan_speed") and gpu.fan_speed >= 0)
+						? (int)ulen(Config::getS("fan_symbol")) + 6 : 0), "cached"};
 			if (gpu.supported_functions.mem_utilization)
 				mem_util_graph = Draw::Graph{b_width/2 - 1, 2, "free", gpu.mem_utilization_percent, graph_symbol, 0, 0, 100, 4}; // offset so the graph isn't empty at 0-5% utilization
 			if (gpu.supported_functions.mem_used and gpu.supported_functions.mem_total)
@@ -2618,7 +2621,7 @@ namespace Draw {
 			const string cpu_title = uresize(
 					(custom.empty() ? Cpu::cpuName : custom),
 					b_width - (Config::getB("show_cpu_freq") and hasCpuHz ? (freq_range ? 24 : 14) : 5)
-						- (Cpu::fanRpm > 0 ? 10 : 0)
+						- (Cpu::fanRpm > 0 ? (int)ulen(Config::getS("fan_symbol")) + 7 : 0)
 			);
 			box += createBox(b_x, b_y, b_width, b_height, "", false, cpu_title);
 		}
