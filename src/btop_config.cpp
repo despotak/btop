@@ -258,7 +258,7 @@ namespace Config {
 
 		{"net_iface", 			"#* Starts with the Network Interface specified here."},
 		{"net_interfaces",		"#* How many interfaces to stack in the net box. 1 keeps the single-interface view.\n#* Extra panes show the interfaces after the selected one; the count is reduced if the box\n#* is too short to give each pane a usable height."},
-		{"net_extra_ifaces",	"#* Interface shown in each extra net pane, space separated, \"-\" to pick automatically.\n#* Set with B to move the pane cursor and b/n to change that pane's interface."},
+		{"net_extra_ifaces",	"#* Interface shown in each extra net pane, space separated, \"-\" to pick automatically.\n#* Change with the pane's own selector keys, shown in its top left corner."},
 
 
 
@@ -579,6 +579,8 @@ namespace Config {
 				set("proc_full_width", (vals.at(1) == "2"));
 			}
 			if (vals.at(0).starts_with("gpu")) {
+				//? P field: 0 = stacked below the cpu box, 1 = beside it
+				set("gpu_beside_cpu", (vals.at(1) == "1"));
 				set("graph_symbol_gpu", vals.at(2));
 			} else {
 				set(strings.find("graph_symbol_" + vals.at(0))->first, vals.at(2));

@@ -1153,6 +1153,9 @@ namespace Gpu {
 	vector<string> box = {};
 	//? Process rows this panel actually has room for, decided in calc_sizes from leftover height
 	vector<int> proc_rows_vec = {};
+	//? Height of the inner statistics box. b_height_vec holds it only until calc_sizes overwrites it
+	//? with the graph area height, and the PCIe line needs the original to place itself.
+	vector<int> b_box_h_vec = {};
 
     string draw(const gpu_info& gpu, unsigned long index, bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
@@ -1183,8 +1186,9 @@ namespace Gpu {
 		//? relative to this height, so it has to be known before anything is drawn.
 		const int proc_rows = (std::cmp_less(index, proc_rows_vec.size()) and gpu.supported_functions.proc_stats)
 			? proc_rows_vec[index] : 0;
-		int height = gpu_b_height_offsets[index] + 4
-			+ ((proc_rows > 0 and Config::getS("gpu_processes") == "Auto") ? proc_rows + 1 : 0);
+		//? Taken from the layout rather than re-derived: beside the cpu box the panel height is not
+		//? ours to choose, so gpu_b_height_offsets is not what the box actually got.
+		int height = b_box_h_vec[index] + 2;
 		out.reserve(width * height);
 
 		//* Redraw elements not needed to be updated every cycle
@@ -2825,6 +2829,7 @@ namespace Draw {
 			pwr_meter_vec.resize(shown);
 			enc_meter_vec.resize(shown);
 			proc_rows_vec.resize(shown);
+			b_box_h_vec.resize(shown);
 			redraw.resize(shown);
 			total_height = 0;
 			//? Beside mode: the cpu box gives up part of its width and the gpu panels stack inside
@@ -2837,7 +2842,16 @@ namespace Draw {
 					const int h = (i == shown - 1) ? Cpu::height - used : Cpu::height / shown;
 					x_vec[i] = Cpu::width + 1;
 					y_vec[i] = (Config::getB("cpu_bottom") ? 1 : 1) + used;
-					b_height_vec[i] = gpu_b_height_offsets[shown_panels[i]] + 2;
+					//? The cpu box fixes this panel's height, so the content has to fit what it is
+					//? given rather than the other way round - the trade "Auto" makes when stacked.
+					const int panel = shown_panels[i];
+					const int rows_max = gpu_proc_rows_max[panel];
+					const int base = gpu_b_height_offsets[panel]
+						- ((Config::getS("gpu_processes") == "On" and rows_max > 0) ? rows_max + 1 : 0);
+					const int spare = (h - 2) - (base + 2) - 1;
+					proc_rows_vec[i] = (Config::getS("gpu_processes") == "Off")
+						? 0 : clamp(spare, 0, rows_max);
+					b_height_vec[i] = min(h - 2, base + 2 + (proc_rows_vec[i] > 0 ? proc_rows_vec[i] + 1 : 0));
 					b_width = clamp(gpu_w / 2, min_width, 65);
 					b_x_vec[i] = x_vec[i] + gpu_w - b_width - 1;
 					b_y_vec[i] = y_vec[i] + ceil((double)(h - 2 - b_height_vec[i]) / 2) + 1;
@@ -2846,6 +2860,7 @@ namespace Draw {
 					string name = Config::getS(std::string("custom_gpu_name") + (char)(shown_panels[i]+'0'));
 					if (name.empty()) name = gpu_names[shown_panels[i]];
 					box[i] += createBox(b_x_vec[i], b_y_vec[i], b_width, b_height_vec[i], "", false, name.substr(0, b_width-5));
+					b_box_h_vec[i] = b_height_vec[i];
 					b_height_vec[i] = h - 2;
 					width = gpu_w;
 					used += h;
@@ -2896,6 +2911,7 @@ namespace Draw {
 				if (name.empty()) name = gpu_names[shown_panels[i]];
 
 				box[i] += createBox(b_x_vec[i], b_y_vec[i], b_width, b_height_vec[i], "", false, name.substr(0, b_width-5));
+				b_box_h_vec[i] = b_height_vec[i];
 				b_height_vec[i] = height - 2;
 			}
 		}
