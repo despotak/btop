@@ -2749,7 +2749,11 @@ namespace Draw {
 			//? Beside mode: hand part of the width to the gpu panels. The cpu box keeps its info
 			//? block (capped at 65 columns anyway) and gives up graph width, which is the space
 			//? that was going to waste on a wide display.
-			if (gpu_beside) width = max(Cpu::min_width, (int)round((double)Term::width * 0.55));
+			//? The column tiers below need width*2/3 to clear, so the split is not free: at 0.55 a
+			//? 157 column terminal fell one column short of the per-core graphs. Take what the info
+			//? block needs and leave the gpu panels their minimum plus room for a graph.
+			if (gpu_beside) width = clamp((int)round((double)Term::width * 0.62), Cpu::min_width,
+				max(Cpu::min_width, (int)Term::width - Gpu::min_width - 12));
 		#ifdef GPU_SUPPORT
 			if (Gpu::shown != 0 and not (Mem::shown or Net::shown or Proc::shown)) {
 				height = Term::height - Gpu::total_height - gpus_extra_height;
