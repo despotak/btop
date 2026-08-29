@@ -1871,9 +1871,10 @@ namespace Net {
 		if (force_redraw) redraw = true;
 		if (redraw) graphs.clear();
 
-		//? How many panes actually fit. min_height is 6, so anything under 8 per pane is unusable.
+		//? How many panes actually fit. At 7 rows a pane keeps both rate readouts and drops the
+		//? Total lines; under that it clips, so 7 is the floor.
 		const int want = clamp(Config::getI("net_interfaces"), 1, 4);
-		int panes = clamp(height / 8, 1, want);
+		int panes = clamp(height / 7, 1, want);
 
 		//? Pane 0 is the selected interface; the rest follow it in the interface list, loopback last
 		shown_ifaces.clear();
