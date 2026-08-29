@@ -258,6 +258,8 @@ namespace Config {
 
 		{"net_iface", 			"#* Starts with the Network Interface specified here."},
 		{"net_interfaces",		"#* How many interfaces to stack in the net box. 1 keeps the single-interface view.\n#* Extra panes show the interfaces after the selected one; the count is reduced if the box\n#* is too short to give each pane a usable height."},
+		{"net_extra_ifaces",	"#* Interface shown in each extra net pane, space separated, \"-\" to pick automatically.\n#* Set with B to move the pane cursor and b/n to change that pane's interface."},
+
 
 
 	    {"base_10_bitrate",     "#* \"True\" shows bitrates in base 10 (Kbps, Mbps). \"False\" shows bitrates in binary sizes (Kibps, Mibps, etc.). \"Auto\" uses base_10_sizes."},
@@ -319,6 +321,7 @@ namespace Config {
 		{"disks_filter", ""},
 		{"io_graph_speeds", ""},
 		{"net_iface", ""},
+		{"net_extra_ifaces", ""},
 		{"base_10_bitrate", "Auto"},
 		{"log_level", "WARNING"},
 		{"proc_filter", ""},
@@ -851,7 +854,10 @@ namespace Config {
 				}
 				else if (ints.contains(name)) {
 					cread >> value;
-					if (not isint(value))
+					//? isint() is unsigned and shared with single-keypress checks, so a negative is
+					//? accepted here rather than there. proc_gpu_device uses -1 for "every device".
+					const auto numeric = (value.starts_with('-') ? std::string_view{value}.substr(1) : std::string_view{value});
+					if (numeric.empty() or not isint(numeric))
 						load_warnings.push_back("Got an invalid integer value for config name: " + name);
 					else if (not intValid(name, value)) {
 						load_warnings.push_back(validError);

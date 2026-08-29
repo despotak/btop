@@ -1723,22 +1723,24 @@ namespace Net {
 	int b_x, b_y, b_width, b_height, d_graph_height, u_graph_height;
 	bool shown = true, redraw = true;
 	const int MAX_IFNAMSIZ = 15;
-	string old_ip;
+	//? Per interface: a single shared value made every pane clobber the one above it, so each
+	//? cycle at least one pane saw a changed address and forced a redraw forever.
+	std::unordered_map<string, string> old_ip;
 	std::unordered_map<string, Draw::Graph> graphs;
 	string box;
 
 	//? Draws one interface into a horizontal slice of the net box. py/ph are the slice;
 	//? first marks the pane that owns the box title and the b/n/z/a/y buttons.
 	string draw_iface(const net_info& net, const string& iface, int py, int ph, bool first,
-	                  bool redraw, bool data_same) {
+	                  bool focused, bool redraw, bool data_same) {
 		auto net_sync = Config::getB("net_sync");
 		auto net_auto = Config::getB("net_auto");
 		auto tty_mode = Config::getB("tty_mode");
 		auto swap_upload_download = Config::getB("swap_upload_download");
 		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_net"));
 		string ip_addr = (net.ipv4.empty() ? net.ipv6 : net.ipv4);
-		if (old_ip != ip_addr) {
-			old_ip = ip_addr;
+		if (old_ip[iface] != ip_addr) {
+			old_ip[iface] = ip_addr;
 			redraw = true;
 		}
 		string out;
@@ -1795,7 +1797,7 @@ namespace Net {
 				//? its selector, because the IP field owns x+8 on every pane.
 				out += Mv::to(y, x) + Theme::c("net_box") + Symbols::div_left
 					+ Symbols::h_line * max(0, width - i_size - 5) + Symbols::title_left
-					+ Fx::b + Theme::c("title") + uresize(iface, MAX_IFNAMSIZ)
+					+ Fx::b + Theme::c(focused ? "hi_fg" : "title") + uresize(iface, MAX_IFNAMSIZ)
 					+ Fx::ub + Theme::c("net_box") + Symbols::title_right
 					+ Symbols::h_line + Symbols::div_right;
 			}
@@ -1819,6 +1821,7 @@ namespace Net {
 			} else {
 				out += Mv::to(y + u_graph_height + 1 + ((height * swap_upload_download) % 2), x + 1);
 			}
+			if (not graphs.contains(iface + "_" + dir)) continue;
 			out += graphs.at(iface + "_" + dir)(safeVal(net.bandwidth, dir), redraw or data_same or not net.connected)
 				+ Mv::to(y+1 + (((dir == "upload") == (!swap_upload_download)) * (height - 3)), x + 1) + Fx::ub + Theme::c("graph_text")
 				+ floating_humanizer((dir == "upload" ? up_max : down_max), true);
@@ -1859,25 +1862,54 @@ namespace Net {
 		//? Pane 0 is the selected interface; the rest follow it in the interface list, loopback last
 		shown_ifaces.clear();
 		shown_ifaces.push_back(selected_iface);
-		//? The panes are a window over the interface list starting at the selected one, so b and n
-		//? move the whole window and every pane is reachable without another binding. Interfaces
-		//? that have never moved a byte are skipped - getifaddrs lists docker0, wlan0 and the
-		//? unused port of the dual-port card, and none of them are worth a pane.
-		const int start = v_index(interfaces, selected_iface);
-		for (size_t step = 1; step <= interfaces.size(); step++) {
-			if (std::cmp_greater_equal(shown_ifaces.size(), panes)) break;
-			const auto& i = interfaces.at((start + step) % interfaces.size());
-			if (i == selected_iface or i == "lo") continue;
-			const auto it = current_net.find(i);
-			if (it == current_net.end()) continue;
-			const auto& st = it->second.stat;
-			uint64_t bytes = 0;
-			if (st.contains("download")) bytes += st.at("download").total;
-			if (st.contains("upload")) bytes += st.at("upload").total;
-			if (bytes == 0) continue;
-			shown_ifaces.push_back(i);
+		//? Each extra pane either names its interface explicitly - set with B then b/n, and nothing
+		//? is filtered out, so lo and an idle wlan0 are perfectly selectable - or is left on auto,
+		//? in which case it takes the next interface after the one above it that has actually moved
+		//? bytes. Auto exists so the default is useful; the explicit setting exists so it is yours.
+		//? Load the persisted per-pane choices. Cheap, and it keeps the config the single source
+		//? of truth rather than a copy that drifts from it.
+		pane_iface.assign(4, "");
+		{
+			int slot = 1;
+			for (const auto& name : ssplit(Config::getS("net_extra_ifaces"))) {
+				if (slot > 3) break;
+				if (name != "-") pane_iface.at(slot) = name;
+				slot++;
+			}
+		}
+		for (int pane = 1; pane < panes; pane++) {
+			const auto& pinned = pane_iface.at(pane);
+			if (not pinned.empty() and current_net.contains(pinned)) {
+				shown_ifaces.push_back(pinned);
+				continue;
+			}
+			const int start = v_index(interfaces, shown_ifaces.back());
+			for (size_t step = 1; step <= interfaces.size(); step++) {
+				const auto& i = interfaces.at((start + step) % interfaces.size());
+				if (v_contains(shown_ifaces, i) or i == "lo") continue;
+				const auto it = current_net.find(i);
+				if (it == current_net.end()) continue;
+				const auto& st = it->second.stat;
+				uint64_t bytes = 0;
+				if (st.contains("download")) bytes += st.at("download").total;
+				if (st.contains("upload")) bytes += st.at("upload").total;
+				if (bytes == 0) continue;
+				shown_ifaces.push_back(i);
+				break;
+			}
+			if (std::cmp_less_equal(shown_ifaces.size(), (size_t)pane)) break;
 		}
 		panes = (int)shown_ifaces.size();
+
+		//? The graphs are built in the redraw branch and read every cycle, so a pane set that
+		//? changes without a redraw leaves graphs.at() looking up a key that was never made.
+		//? That threw and took the whole box out - blank net box, no title, no selector.
+		static vector<string> last_shown;
+		if (last_shown != shown_ifaces) {
+			last_shown = shown_ifaces;
+			redraw = true;
+			graphs.clear();
+		}
 
 		string out;
 		int used = 0;
@@ -1886,7 +1918,7 @@ namespace Net {
 			const auto& iface = shown_ifaces.at(i);
 			const auto it = current_net.find(iface);
 			out += draw_iface((it == current_net.end() ? net : it->second), iface,
-				y + used, ph, i == 0, redraw, data_same);
+				y + used, ph, i == 0, i == focused_pane, redraw, data_same);
 			used += ph;
 		}
 		redraw = false;

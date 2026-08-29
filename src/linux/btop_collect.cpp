@@ -3339,6 +3339,8 @@ namespace Net {
 	vector<string> interfaces;
 	string selected_iface;
 	vector<string> shown_ifaces;
+	vector<string> pane_iface;
+	int focused_pane{};
 	int errors{};
 	std::unordered_map<string, uint64_t> graph_max = { {"download", {}}, {"upload", {}} };
 	std::unordered_map<string, array<int, 2>> max_count = { {"download", {}}, {"upload", {}} };

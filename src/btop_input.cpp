@@ -624,9 +624,23 @@ namespace Input {
 				bool no_update = true;
 				bool redraw = true;
 
-				if (is_in(key, "b", "n")) {
+				//? Move the pane cursor. b and n then act on whichever pane it is sitting on, so every
+				//? pane is selectable with no per-pane bindings and no cap on how many there are.
+				if (key == "B") {
 					atomic_wait(Runner::active);
-					int c_index = v_index(Net::interfaces, Net::selected_iface);
+					const int panes = std::max(1, (int)Net::shown_ifaces.size());
+					Net::focused_pane = (Net::focused_pane + 1) % panes;
+					Net::redraw = true;
+				}
+				else if (is_in(key, "b", "n")) {
+					atomic_wait(Runner::active);
+					//? Pane 0 is the selected interface; the rest carry their own explicit choice,
+					//? and nothing is filtered there - lo and an idle wlan0 are fair game.
+					const string current = (Net::focused_pane == 0)
+						? Net::selected_iface
+						: (std::cmp_less(Net::focused_pane, Net::shown_ifaces.size())
+							? Net::shown_ifaces.at(Net::focused_pane) : Net::selected_iface);
+					int c_index = v_index(Net::interfaces, current);
 					if (c_index != (int)Net::interfaces.size()) {
 						if (key == "b") {
 							if (--c_index < 0) c_index = Net::interfaces.size() - 1;
@@ -634,8 +648,19 @@ namespace Input {
 						else if (key == "n") {
 							if (++c_index == (int)Net::interfaces.size()) c_index = 0;
 						}
-						Net::selected_iface = Net::interfaces.at(c_index);
-						Net::rescale = true;
+						if (Net::focused_pane == 0) {
+							Net::selected_iface = Net::interfaces.at(c_index);
+							Net::rescale = true;
+						}
+						else {
+							Net::pane_iface.resize(4);
+							Net::pane_iface.at(Net::focused_pane) = Net::interfaces.at(c_index);
+							string joined;
+							for (size_t i = 1; i < Net::pane_iface.size(); i++)
+								joined += (Net::pane_iface.at(i).empty() ? "-" : Net::pane_iface.at(i)) + ' ';
+							Config::set("net_extra_ifaces", string{trim(joined)});
+						}
+						Net::redraw = true;
 					}
 				}
 				else if (key == "y") {
