@@ -624,13 +624,15 @@ namespace Input {
 				bool no_update = true;
 				bool redraw = true;
 
-				//? b/n select the first pane's interface, v/w the second's - the same visible pair
-				//? idiom, one button per pane, rather than a modal cursor. Nothing is filtered when
-				//? choosing explicitly, so lo and an idle wlan0 are fair game.
-				if (is_in(key, "b", "n", "v", "w")) {
+				//? b/n select the first pane's interface, and a second pair selects the second pane's -
+				//? the same visible button idiom, one per pane, rather than a modal cursor.
+				//? j/l when vim_keys is off, since h is help and k is kill; v/w when it is on, where
+				//? j and l are movement. Nothing is filtered when choosing explicitly, so lo and an
+				//? idle wlan0 are fair game.
+				if (is_in(key, "b", "n", Net::pane2_back(), Net::pane2_fwd())) {
 					atomic_wait(Runner::active);
-					const bool second = is_in(key, "v", "w");
-					const bool back = is_in(key, "b", "v");
+					const bool second = is_in(key, Net::pane2_back(), Net::pane2_fwd());
+					const bool back = (key == "b" or key == Net::pane2_back());
 					if (second and Net::shown_ifaces.size() < 2) return;
 					const string current = second ? Net::shown_ifaces.at(1) : Net::selected_iface;
 					int c_index = v_index(Net::interfaces, current);

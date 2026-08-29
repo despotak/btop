@@ -1800,15 +1800,15 @@ namespace Net {
 					+ Symbols::h_line * max(0, width - i_size - (selectable ? 11 : 5))
 					+ Symbols::title_left + Fx::b;
 				if (selectable)
-					out += Theme::c("hi_fg") + Symbols::left + "v " + Theme::c("title")
-						+ uresize(iface, MAX_IFNAMSIZ) + Theme::c("hi_fg") + " w" + Symbols::right;
+					out += Theme::c("hi_fg") + Symbols::left + string{pane2_back()} + ' ' + Theme::c("title")
+						+ uresize(iface, MAX_IFNAMSIZ) + Theme::c("hi_fg") + ' ' + string{pane2_fwd()} + Symbols::right;
 				else
 					out += Theme::c("title") + uresize(iface, MAX_IFNAMSIZ);
 				out += Fx::ub + Theme::c("net_box") + Symbols::title_right
 					+ Symbols::h_line + Symbols::div_right;
 				if (selectable) {
-					Input::mouse_mappings["v"] = {y, x + width - i_size - 9, 1, 3};
-					Input::mouse_mappings["w"] = {y, x + width - 6, 1, 3};
+					Input::mouse_mappings[pane2_back()] = {y, x + width - i_size - 9, 1, 3};
+					Input::mouse_mappings[pane2_fwd()] = {y, x + width - 6, 1, 3};
 				}
 			}
 			out += Draw::createBox(b_x, b_y, b_width, b_height, "", false,

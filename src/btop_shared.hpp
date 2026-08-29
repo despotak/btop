@@ -361,6 +361,11 @@ namespace Net {
 	extern string selected_iface;
 	//? Interfaces currently stacked in the net box, first is selected_iface
 	extern vector<string> shown_ifaces;
+	//? Keys for the second pane's selector. h is help and k is kill when vim_keys is off, so the
+	//? home-row pair there is j/l; with vim_keys on those are movement, so it falls back to v/w.
+	const char* pane2_back();
+	const char* pane2_fwd();
+
 	//? Explicit interface per extra pane; empty entry means "pick one automatically".
 	//? Persisted through the net_extra_ifaces config string.
 	extern vector<string> pane_iface;

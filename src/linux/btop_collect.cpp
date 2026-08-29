@@ -3340,6 +3340,8 @@ namespace Net {
 	string selected_iface;
 	vector<string> shown_ifaces;
 	vector<string> pane_iface;
+	const char* pane2_back() { return Config::getB("vim_keys") ? "v" : "j"; }
+	const char* pane2_fwd()  { return Config::getB("vim_keys") ? "w" : "l"; }
 	int errors{};
 	std::unordered_map<string, uint64_t> graph_max = { {"download", {}}, {"upload", {}} };
 	std::unordered_map<string, array<int, 2>> max_count = { {"download", {}}, {"upload", {}} };
