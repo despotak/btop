@@ -2762,7 +2762,10 @@ namespace Mem {
 		if (Runner::stopping or (no_update and not current_mem.percent.at("used").empty())) return current_mem;
 		auto show_swap = Config::getB("show_swap");
 		auto swap_disk = Config::getB("swap_disk");
-		auto show_disks = Config::getB("show_disks");
+		//? The standalone disks box needs the data even when the mem box's disk half is off,
+		//? so it forces collection on. Third and last reader of this flag - draw and calcSizes
+		//? are the other two, and all three have to agree.
+		auto show_disks = Config::getB("show_disks") or Disks::shown;
 		auto zfs_arc_cached = Config::getB("zfs_arc_cached");
 		auto totalMem = get_totalMem();
 		auto& mem = current_mem;

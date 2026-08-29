@@ -604,6 +604,8 @@ namespace Input {
 					Config::flip("io_mode");
 				}
 				else if (key == "d") {
+					//? Meaningless while the standalone disks box is up: that box is the toggle
+					if (Disks::shown) return;
 					Config::flip("show_disks");
 					no_update = false;
 					Draw::calcSizes();

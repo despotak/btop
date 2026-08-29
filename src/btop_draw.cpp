@@ -1566,7 +1566,8 @@ namespace Mem {
 		if (force_redraw) redraw = true;
 		auto show_swap = Config::getB("show_swap");
 		auto swap_disk = Config::getB("swap_disk");
-		auto show_disks = Config::getB("show_disks");
+		//? Must match calcSizes, which forces this on while the standalone disks box is up
+		auto show_disks = Config::getB("show_disks") or Disks::shown;
 		auto show_io_stat = Config::getB("show_io_stat");
 		auto io_mode = Config::getB("io_mode");
 		auto io_graph_combined = Config::getB("io_graph_combined");
@@ -2781,7 +2782,9 @@ namespace Draw {
 		//* because the slot geometry and every disk meter are computed here.
 		if (Mem::shown or Disks::shown) {
 			using namespace Mem;
-			auto show_disks = Config::getB("show_disks");
+			//? The standalone disks box is its own on/off switch, so show_disks must not be able to
+			//? take away the geometry that sizes it - that left the box empty and overlapping mem.
+			auto show_disks = Config::getB("show_disks") or Disks::shown;
 			auto swap_disk = Config::getB("swap_disk");
 			auto mem_graphs = Config::getB("mem_graphs");
 
