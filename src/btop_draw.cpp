@@ -1857,8 +1857,14 @@ namespace Proc {
 		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
 		auto mem_bytes = Config::getB("proc_mem_bytes");
 		auto vim_keys = Config::getB("vim_keys");
-		auto show_cpu_graphs = Config::getB("proc_cpu_graphs");
-		auto show_gpu_graphs = Config::getB("proc_gpu_graphs");
+		//? Each graph takes 5 columns straight out of the command field, which is the last thing to get
+		//? space: at 89 columns turning both on leaves cmd_size = 9 and clips the "Command:" header.
+		//? Drop them when the box is too narrow to afford it, the same way show_gpu below does.
+		//? 110 keeps at least ~30 columns of command text with both graphs drawn.
+		constexpr int PROC_GRAPH_MIN_WIDTH = 110;
+		const bool proc_graphs_fit = width >= PROC_GRAPH_MIN_WIDTH;
+		auto show_cpu_graphs = Config::getB("proc_cpu_graphs") and proc_graphs_fit;
+		auto show_gpu_graphs = Config::getB("proc_gpu_graphs") and proc_graphs_fit;
 		#if defined(__linux__)
 			const bool show_gpu = width >= ((show_cpu_graphs or show_gpu_graphs) ? 70 : 65);
 			const bool show_gpu_mem = width >= ((show_cpu_graphs or show_gpu_graphs) ? 78 : 73);
