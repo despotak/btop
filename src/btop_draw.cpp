@@ -1467,7 +1467,8 @@ namespace Mem {
 	//? Draws the disk list into an arbitrary rectangle. Shared by the mem box, which hosts it in
 	//? its right half, and by the standalone disks box (#918), so there is one implementation.
 	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh,
-	                      bool redraw, bool data_same, const string& box_color, int scroll, bool scrollable) {
+	                      bool redraw, bool data_same, const string& box_color, int scroll, bool scrollable,
+	                      bool own_left_border) {
 		int skip = scroll;
 		string out;
 		auto io_mode = Config::getB("io_mode");
@@ -1480,7 +1481,11 @@ namespace Mem {
 			const auto& disks = mem.disks;
 			int cx = 0; int cy = 0; string divider;
 			bool big_disk = dw >= 25;
-			divider = Mv::l(1) + Theme::c("div_line") + Symbols::div_left + Symbols::h_line * dw + box_color + Fx::ub + Symbols::div_right + Mv::l(dw);
+			//? The left tee lands on the mem box's inner divider when the list is drawn inside it, and
+			//? on the standalone box's own border otherwise. Painting it div_line in the second case
+			//? punched a grey notch through the box outline once per disk.
+			divider = Mv::l(1) + (own_left_border ? box_color : Theme::c("div_line")) + Symbols::div_left
+				+ Theme::c("div_line") + Symbols::h_line * dw + box_color + Fx::ub + Symbols::div_right + Mv::l(dw);
 			const string hu_div = Theme::c("div_line") + Symbols::h_line + Theme::c("main_fg");
 			if (io_mode) {
 				for (const auto& mount : mem.disks_order) {
@@ -1619,7 +1624,9 @@ namespace Mem {
 		//? Mem and swap
 		int cx = 1, cy = 1;
 		string divider = (graph_height > 0 ? Mv::l(2) + Theme::c("mem_box") + Symbols::div_left + Theme::c("div_line") + Symbols::h_line * (mem_width - 1)
-						+ (show_disks ? "" : Theme::c("mem_box")) + Symbols::div_right + Mv::l(mem_width - 1) + Theme::c("main_fg") : "");
+		//? Only a disk list drawn inside this box puts an inner divider here; with the standalone
+		//? disks box this column is the mem box's own right border and has to keep its colour.
+						+ (show_disks and not Disks::shown ? "" : Theme::c("mem_box")) + Symbols::div_right + Mv::l(mem_width - 1) + Theme::c("main_fg") : "");
 		string up = (graph_height >= 2 ? Mv::l(mem_width - 2) + Mv::u(graph_height - 1) : "");
 		bool big_mem = mem_width > 21;
 
@@ -1716,7 +1723,7 @@ namespace Disks {
 		}
 		//? Never scroll the last entry off the top
 		scroll = clamp(scroll, 0, max(0, (int)mem.disks_order.size() - 1));
-		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"), scroll, true);
+		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"), scroll, true, true);
 		redraw = false;
 		return out + Fx::reset;
 	}

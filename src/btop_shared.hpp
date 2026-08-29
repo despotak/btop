@@ -337,7 +337,7 @@ namespace Mem {
 	//? scrollable: the caller can reach entries that do not fit, so the Free row no longer has to
 	//? be dropped to make everything visible at once.
 	void prepare_disks(const mem_info& mem, int dwidth, int dheight, bool scrollable = false);
-	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color, int scroll = 0, bool scrollable = false);
+	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color, int scroll = 0, bool scrollable = false, bool own_left_border = false);
 
 }
 
