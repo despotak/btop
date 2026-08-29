@@ -1388,6 +1388,76 @@ namespace Mem {
 	std::unordered_map<string, Draw::Meter> disk_meters_free;
 	std::unordered_map<string, Draw::Graph> io_graphs;
 
+	//? Builds the disk meters and io graphs. Lived inside Mem::draw, which meant a standalone
+	//? disks box with the mem box hidden had no meters at all and rendered empty. Called by
+	//? whichever box is about to draw the list.
+	void prepare_disks(const mem_info& mem, int dwidth, int dheight) {
+		auto show_io_stat = Config::getB("show_io_stat");
+		auto io_mode = Config::getB("io_mode");
+		auto io_graph_combined = Config::getB("io_graph_combined");
+		auto tty_mode = Config::getB("tty_mode");
+		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_mem"));
+		const int disks_width = dwidth;
+		const int height = dheight;
+
+				if (show_io_stat or io_mode) {
+					std::unordered_map<string, int> custom_speeds;
+					int half_height = 0;
+					if (io_mode) {
+						disks_io_h = max((int)floor((double)(height - 2 - (disk_ios * 2)) / max(1, disk_ios)), (io_graph_combined ? 1 : 2));
+						half_height = ceil((double)disks_io_h / 2);
+
+						if (not Config::getS("io_graph_speeds").empty()) {
+							auto split = ssplit(Config::getS("io_graph_speeds"));
+							for (const auto& entry : split) {
+								auto vals = ssplit(entry, ':');
+								if (vals.size() == 2 and mem.disks.contains(vals.at(0)) and isint(vals.at(1)))
+									try {
+										custom_speeds[vals.at(0)] = std::stoi(vals.at(1));
+									}
+									catch (const std::out_of_range&) { continue; }
+							}
+						}
+					}
+
+					for (const auto& [name, disk] : mem.disks) {
+						if (disk.io_read.empty()) continue;
+
+						io_graphs[name + "_activity"] = Draw::Graph{disks_width - 6, 1, "available", disk.io_activity, graph_symbol};
+
+						if (io_mode) {
+							//? Create one combined graph for IO read/write if enabled
+							long long speed = static_cast<long long>(custom_speeds.contains(name) ? custom_speeds.at(name) : 100) << 20;
+							if (io_graph_combined) {
+								deque<long long> combined(disk.io_read.size(), 0);
+								rng::transform(disk.io_read, disk.io_write, combined.begin(), std::plus<long long>());
+								io_graphs[name] = Draw::Graph{
+									disks_width, disks_io_h, "available", combined,
+									graph_symbol, false, true, speed};
+							}
+							else {
+								io_graphs[name + "_read"] = Draw::Graph{
+									disks_width, half_height, "free",
+									disk.io_read, graph_symbol, false,
+									true, speed};
+								io_graphs[name + "_write"] = Draw::Graph{
+									disks_width, disks_io_h - half_height,
+									"used", disk.io_write, graph_symbol,
+									true, true, speed};
+							}
+						}
+					}
+				}
+
+				for (int i = 0; const auto& [name, ignored] : mem.disks) {
+					if (i * 2 > height - 2) break;
+					disk_meters_used[name] = Draw::Meter{disk_meter, "used"};
+					if (cmp_less_equal(mem.disks.size() * 3, height - 1))
+						disk_meters_free[name] = Draw::Meter{disk_meter, "free"};
+				}
+
+				}
+
 	//? Draws the disk list into an arbitrary rectangle. Shared by the mem box, which hosts it in
 	//? its right half, and by the standalone disks box (#918), so there is one implementation.
 	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh,
@@ -1530,70 +1600,8 @@ namespace Mem {
 				}
 			}
 
-			//? Disk meters and io graphs
-			if (show_disks) {
-				if (show_io_stat or io_mode) {
-					std::unordered_map<string, int> custom_speeds;
-					int half_height = 0;
-					if (io_mode) {
-						disks_io_h = max((int)floor((double)(height - 2 - (disk_ios * 2)) / max(1, disk_ios)), (io_graph_combined ? 1 : 2));
-						half_height = ceil((double)disks_io_h / 2);
-
-						if (not Config::getS("io_graph_speeds").empty()) {
-							auto split = ssplit(Config::getS("io_graph_speeds"));
-							for (const auto& entry : split) {
-								auto vals = ssplit(entry, ':');
-								if (vals.size() == 2 and mem.disks.contains(vals.at(0)) and isint(vals.at(1)))
-									try {
-										custom_speeds[vals.at(0)] = std::stoi(vals.at(1));
-									}
-									catch (const std::out_of_range&) { continue; }
-							}
-						}
-					}
-
-					for (const auto& [name, disk] : mem.disks) {
-						if (disk.io_read.empty()) continue;
-
-						io_graphs[name + "_activity"] = Draw::Graph{disks_width - 6, 1, "available", disk.io_activity, graph_symbol};
-
-						if (io_mode) {
-							//? Create one combined graph for IO read/write if enabled
-							long long speed = static_cast<long long>(custom_speeds.contains(name) ? custom_speeds.at(name) : 100) << 20;
-							if (io_graph_combined) {
-								deque<long long> combined(disk.io_read.size(), 0);
-								rng::transform(disk.io_read, disk.io_write, combined.begin(), std::plus<long long>());
-								io_graphs[name] = Draw::Graph{
-									disks_width, disks_io_h, "available", combined,
-									graph_symbol, false, true, speed};
-							}
-							else {
-								io_graphs[name + "_read"] = Draw::Graph{
-									disks_width, half_height, "free",
-									disk.io_read, graph_symbol, false,
-									true, speed};
-								io_graphs[name + "_write"] = Draw::Graph{
-									disks_width, disks_io_h - half_height,
-									"used", disk.io_write, graph_symbol,
-									true, true, speed};
-							}
-						}
-					}
-				}
-
-				for (int i = 0; const auto& [name, ignored] : mem.disks) {
-					if (i * 2 > height - 2) break;
-					disk_meters_used[name] = Draw::Meter{disk_meter, "used"};
-					if (cmp_less_equal(mem.disks.size() * 3, height - 1))
-						disk_meters_free[name] = Draw::Meter{disk_meter, "free"};
-				}
-
-				//? The io toggle belongs to the disk list, so it follows it onto the standalone box
-				const int io_x = Disks::shown ? Disks::x + Disks::width - 6 : x + width - 6;
-				out += Mv::to(y, io_x) + Fx::ub + Theme::c("mem_box") + Symbols::title_left + (io_mode ? Fx::b : "") + Theme::c("hi_fg")
-				+ 'i' + Theme::c("title") + 'o' + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
-				Input::mouse_mappings["i"] = {y, io_x + 1, 1, 2};
-			}
+			//? Disk meters and io graphs. The standalone disks box prepares its own.
+			if (show_disks and not Disks::shown) prepare_disks(mem, disks_width, height);
 
 		}
 
@@ -1682,7 +1690,18 @@ namespace Disks {
 		if (force_redraw) redraw = true;
 		string out;
 		out.reserve(width * height);
-		if (redraw) out += box;
+		if (redraw) {
+			out += box;
+			//? Meters are sized here rather than in Mem::draw, which does not run when the mem box
+			//? is hidden - that left this box drawing an empty frame.
+			Mem::prepare_disks(mem, width - 2, height);
+			//? The io toggle belongs to the list, so it lives on this border now
+			const int io_x = x + width - 6;
+			out += Mv::to(y, io_x) + Fx::ub + Theme::c("mem_box") + Symbols::title_left
+				+ (Config::getB("io_mode") ? Fx::b : "") + Theme::c("hi_fg") + 'i' + Theme::c("title") + 'o'
+				+ Fx::ub + Theme::c("mem_box") + Symbols::title_right;
+			Input::mouse_mappings["i"] = {y, io_x + 1, 1, 2};
+		}
 		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"));
 		redraw = false;
 		return out + Fx::reset;
@@ -2713,7 +2732,7 @@ namespace Draw {
 					if (proc_rows_vec[i] > 0) b_height_vec[i] += proc_rows_vec[i] + 1;
 				}
 				x_vec[i] = 1; y_vec[i] = 1 + total_height + (not Config::getB("cpu_bottom"))*Cpu::shown*Cpu::height;
-				box[i] = createBox(x_vec[i], y_vec[i], width, height, Theme::c("cpu_box"), true, std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+5)%10); // TODO gpu_box
+				box[i] = createBox(x_vec[i], y_vec[i], width, height, Theme::c("cpu_box"), true, std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+6)%10); // TODO gpu_box
 				b_width = clamp(width/2, min_width, 65);
 				total_height += height;
 
@@ -2835,7 +2854,7 @@ namespace Draw {
 			if (Disks::shown) {
 				Disks::redraw = true;
 				Disks::box = createBox(Disks::x, Disks::y, Disks::width, Disks::height,
-					Theme::c("mem_box"), true, "disks", "", 6);
+					Theme::c("mem_box"), true, "disks", "", 5);
 				width = mem_width + 1;
 			}
 

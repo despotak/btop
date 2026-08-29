@@ -239,12 +239,14 @@ namespace Input {
 				else if (key.size() == 1 and isint(key)) {
 					auto intKey = std::atoi(key.data());
 				#ifdef GPU_SUPPORT
-					static const array<string, 11> boxes = {"gpu5", "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "disks"};
-					if ((intKey == 0 and Gpu::count < 5) or (intKey >= 5 and intKey - 4 > Gpu::count))
+					//? disks takes 5, ahead of the gpu boxes, so the gpus shift up one: 6..9 and 0.
+					//? A sixth gpu therefore has no digit left; it stays reachable via shown_boxes.
+					static const array<string, 10> boxes = {"gpu4", "cpu", "mem", "net", "proc", "disks", "gpu0", "gpu1", "gpu2", "gpu3"};
+					if ((intKey == 0 and Gpu::count < 5) or (intKey >= 6 and intKey - 5 > Gpu::count))
 						return;
 				#else
-				static const array<string, 11> boxes = {"", "cpu", "mem", "net", "proc", "", "", "", "", "", "disks"};
-					if (intKey == 0 or intKey > 4)
+				static const array<string, 10> boxes = {"", "cpu", "mem", "net", "proc", "disks", "", "", "", ""};
+					if (intKey == 0 or intKey > 5)
 						return;
 				#endif
 					atomic_wait(Runner::active);
