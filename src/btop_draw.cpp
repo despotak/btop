@@ -1195,10 +1195,12 @@ namespace Gpu {
 			int graph_low_height = single_graph ? 0 : b_height_vec[index] - graph_up_height;
 
 			if (gpu.supported_functions.gpu_utilization) {
-				graph_upper = Draw::Graph{x + width - b_width - 3, graph_up_height, "cpu", safeVal(gpu.gpu_percent, "gpu-totals"s), graph_symbol, false, true}; // TODO cpu -> gpu
+				//? Was x + width - b_width - 3, which folded the box's left offset into its width.
+				//? Identical while x was always 1; beside the cpu box it made the graph overrun left.
+				graph_upper = Draw::Graph{width - b_width - 2, graph_up_height, "cpu", safeVal(gpu.gpu_percent, "gpu-totals"s), graph_symbol, false, true}; // TODO cpu -> gpu
             	if (not single_graph) {
                 	graph_lower = Draw::Graph{
-                    	x + width - b_width - 3,
+                    	width - b_width - 2,
                     	graph_low_height, "cpu",
                     	safeVal(gpu.gpu_percent, "gpu-totals"s),
                     	graph_symbol,
