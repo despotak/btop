@@ -359,6 +359,8 @@ namespace Net {
 	extern int x, y, width, height, min_width, min_height;
 	extern bool shown, redraw;
 	extern string selected_iface;
+	//? Interfaces currently stacked in the net box, first is selected_iface
+	extern vector<string> shown_ifaces;
 	extern vector<string> interfaces;
 	extern bool rescale;
 	extern std::unordered_map<string, uint64_t> graph_max;

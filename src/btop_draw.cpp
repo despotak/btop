@@ -1727,9 +1727,10 @@ namespace Net {
 	std::unordered_map<string, Draw::Graph> graphs;
 	string box;
 
-	string draw(const net_info& net, bool force_redraw, bool data_same) {
-		if (Runner::stopping) return "";
-		if (force_redraw) redraw = true;
+	//? Draws one interface into a horizontal slice of the net box. py/ph are the slice;
+	//? first marks the pane that owns the box title and the b/n/z/a/y buttons.
+	string draw_iface(const net_info& net, const string& iface, int py, int ph, bool first,
+	                  bool redraw, bool data_same) {
 		auto net_sync = Config::getB("net_sync");
 		auto net_auto = Config::getB("net_auto");
 		auto tty_mode = Config::getB("tty_mode");
@@ -1741,33 +1742,39 @@ namespace Net {
 			redraw = true;
 		}
 		string out;
-		out.reserve(width * height);
+		out.reserve(width * ph);
+		const int b_height = (ph > 10) ? 9 : ph - 2;
+		const int b_y = py + ((ph - 2) / 2) - b_height / 2 + 1;
+		const int d_graph_height = (int)round((double)(ph - 2) / 2);
+		const int u_graph_height = ph - 2 - d_graph_height;
+		const int height = ph;
+		const int y = py;
 		const string title_left = Theme::c("net_box") + Fx::ub + Symbols::title_left;
 		const string title_right = Theme::c("net_box") + Fx::ub + Symbols::title_right;
-		const int i_size = min((int)selected_iface.size(), MAX_IFNAMSIZ);
+		const int i_size = min((int)iface.size(), MAX_IFNAMSIZ);
 		const long long down_max = (net_auto ? safeVal(graph_max, "download"s) : ((long long)(Config::getI("net_download")) << 20) / 8);
 		const long long up_max = (net_auto ? safeVal(graph_max, "upload"s) : ((long long)(Config::getI("net_upload")) << 20) / 8);
 
 		//* Redraw elements not needed to be updated every cycle
 		if (redraw) {
-			out = box;
+			if (first) out = box;
 			//? Graphs
-			graphs.clear();
-			if (safeVal(net.bandwidth, "download"s).empty() or safeVal(net.bandwidth, "upload"s).empty())
+						if (safeVal(net.bandwidth, "download"s).empty() or safeVal(net.bandwidth, "upload"s).empty())
 				return out + Fx::reset;
 
-			graphs["download"] = Draw::Graph{
+			graphs[iface + "_download"] = Draw::Graph{
 				width - b_width - 2, u_graph_height, "download",
 				net.bandwidth.at("download"), graph_symbol,
 				swap_upload_download, true, down_max};
-			graphs["upload"] = Draw::Graph{
+			graphs[iface + "_upload"] = Draw::Graph{
 				width - b_width - 2, d_graph_height, "upload",
 				net.bandwidth.at("upload"), graph_symbol, !swap_upload_download, true, up_max};
 
-			//? Interface selector and buttons
+			//? Interface selector and buttons - only the pane that owns the box title
+			if (first) {
 
 			out += Mv::to(y, x+width - i_size - 9) + title_left + Fx::b + Theme::c("hi_fg") + Symbols::left + "b " + Theme::c("title")
-				+ uresize(selected_iface, MAX_IFNAMSIZ) + Theme::c("hi_fg") + " n" + Symbols::right + title_right
+				+ uresize(iface, MAX_IFNAMSIZ) + Theme::c("hi_fg") + " n" + Symbols::right + title_right
 				+ Mv::to(y, x+width - i_size - 15) + title_left + Theme::c("hi_fg") + (safeVal(net.stat, "download"s).offset + safeVal(net.stat, "upload"s).offset > 0 ? Fx::b : "") + 'z'
 				+ Theme::c("title") + "ero" + title_right;
 			Input::mouse_mappings["b"] = {y, x+width - i_size - 8, 1, 3};
@@ -1782,6 +1789,18 @@ namespace Net {
 					+ 'y' + Theme::c("title") + "nc" + title_right;
 				Input::mouse_mappings["y"] = {y, x+width - i_size - 26, 1, 4};
 			}
+			}
+			else {
+				//? Later panes get a divider. The name goes on the right, where the first pane keeps
+				//? its selector, because the IP field owns x+8 on every pane.
+				out += Mv::to(y, x) + Theme::c("net_box") + Symbols::div_left
+					+ Symbols::h_line * max(0, width - i_size - 5) + Symbols::title_left
+					+ Fx::b + Theme::c("title") + uresize(iface, MAX_IFNAMSIZ)
+					+ Fx::ub + Theme::c("net_box") + Symbols::title_right
+					+ Symbols::h_line + Symbols::div_right;
+			}
+			out += Draw::createBox(b_x, b_y, b_width, b_height, "", false,
+				(swap_upload_download ? "upload" : "download"), (swap_upload_download ? "download" : "upload"));
 		}
 
 		//? IP or device address
@@ -1800,7 +1819,7 @@ namespace Net {
 			} else {
 				out += Mv::to(y + u_graph_height + 1 + ((height * swap_upload_download) % 2), x + 1);
 			}
-			out += graphs.at(dir)(safeVal(net.bandwidth, dir), redraw or data_same or not net.connected)
+			out += graphs.at(iface + "_" + dir)(safeVal(net.bandwidth, dir), redraw or data_same or not net.connected)
 				+ Mv::to(y+1 + (((dir == "upload") == (!swap_upload_download)) * (height - 3)), x + 1) + Fx::ub + Theme::c("graph_text")
 				+ floating_humanizer((dir == "upload" ? up_max : down_max), true);
 			const string speed = floating_humanizer(safeVal(net.stat, dir).speed, false, 0, false, true);
@@ -1825,8 +1844,54 @@ namespace Net {
 			}
 		}
 
-		redraw = false;
 		return out + Fx::reset;
+	}
+
+	string draw(const net_info& net, bool force_redraw, bool data_same) {
+		if (Runner::stopping) return "";
+		if (force_redraw) redraw = true;
+		if (redraw) graphs.clear();
+
+		//? How many panes actually fit. min_height is 6, so anything under 8 per pane is unusable.
+		const int want = clamp(Config::getI("net_interfaces"), 1, 4);
+		int panes = clamp(height / 8, 1, want);
+
+		//? Pane 0 is the selected interface; the rest follow it in the interface list, loopback last
+		shown_ifaces.clear();
+		shown_ifaces.push_back(selected_iface);
+		//? getifaddrs order is arbitrary and puts docker0 ahead of the real NICs, so rank the
+		//? candidates by traffic instead - the interfaces worth a pane are the ones moving bytes.
+		vector<std::pair<uint64_t, string>> ranked;
+		for (const auto& i : interfaces) {
+			if (i == selected_iface or i == "lo") continue;
+			const auto it = current_net.find(i);
+			if (it == current_net.end()) continue;
+			const auto& st = it->second.stat;
+			uint64_t bytes = 0;
+			if (st.contains("download")) bytes += st.at("download").total;
+			if (st.contains("upload")) bytes += st.at("upload").total;
+			ranked.emplace_back(bytes, i);
+		}
+		rng::sort(ranked, rng::greater{}, &std::pair<uint64_t, string>::first);
+		for (const auto& [bytes, i] : ranked) {
+			if (std::cmp_greater_equal(shown_ifaces.size(), panes)) break;
+			if (bytes == 0) break;
+			shown_ifaces.push_back(i);
+		}
+		panes = (int)shown_ifaces.size();
+
+		string out;
+		int used = 0;
+		for (int i = 0; i < panes; i++) {
+			const int ph = (i == panes - 1) ? height - used : height / panes;
+			const auto& iface = shown_ifaces.at(i);
+			const auto it = current_net.find(iface);
+			out += draw_iface((it == current_net.end() ? net : it->second), iface,
+				y + used, ph, i == 0, redraw, data_same);
+			used += ph;
+		}
+		redraw = false;
+		return out;
 	}
 
 }
@@ -2917,12 +2982,9 @@ namespace Draw {
 			d_graph_height = round((double)(height - 2) / 2);
 			u_graph_height = height - 2 - d_graph_height;
 
+			//? Only the outer frame here. The download/upload box is centred per pane now, so each
+			//? pane draws its own - identical output for a single pane, correct for several.
 			box = createBox(x, y, width, height, Theme::c("net_box"), true, "net", "", 3);
-			auto swap_up_down = Config::getB("swap_upload_download");
-			if (swap_up_down)
-				box += createBox(b_x, b_y, b_width, b_height, "", false, "upload", "download");
-			else
-				box += createBox(b_x, b_y, b_width, b_height, "", false, "download", "upload");
 		}
 
 		//* Calculate and draw proc box outlines

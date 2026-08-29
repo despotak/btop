@@ -257,6 +257,8 @@ namespace Config {
 		{"net_sync", 			"#* Sync the auto scaling for download and upload to whichever currently has the highest scale."},
 
 		{"net_iface", 			"#* Starts with the Network Interface specified here."},
+		{"net_interfaces",		"#* How many interfaces to stack in the net box. 1 keeps the single-interface view.\n#* Extra panes show the interfaces after the selected one; the count is reduced if the box\n#* is too short to give each pane a usable height."},
+
 
 	    {"base_10_bitrate",     "#* \"True\" shows bitrates in base 10 (Kbps, Mbps). \"False\" shows bitrates in binary sizes (Kibps, Mibps, etc.). \"Auto\" uses base_10_sizes."},
 
@@ -415,6 +417,7 @@ namespace Config {
 		{"net_upload", 100},
 		{"proc_tree_auto_collapse", 0},
 		{"proc_gpu_device", -1},
+		{"net_interfaces", 1},
 		{"detailed_pid", 0},
 		{"restore_detailed_pid", 0},
 		{"selected_pid", 0},
@@ -608,7 +611,10 @@ namespace Config {
 			return false;
 		}
 
-		if (name == "proc_gpu_device" and i_value < -1)
+		if (name == "net_interfaces" and (i_value < 1 or i_value > 4))
+			validError = "Config value net_interfaces must be between 1 and 4.";
+
+		else if (name == "proc_gpu_device" and i_value < -1)
 			validError = "Config value proc_gpu_device must be -1 (all GPUs) or a device index.";
 
 		else if (name == "update_ms" and i_value < 100)
