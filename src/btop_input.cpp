@@ -624,37 +624,30 @@ namespace Input {
 				bool no_update = true;
 				bool redraw = true;
 
-				//? Move the pane cursor. b and n then act on whichever pane it is sitting on, so every
-				//? pane is selectable with no per-pane bindings and no cap on how many there are.
-				if (key == "B") {
+				//? b/n select the first pane's interface, v/w the second's - the same visible pair
+				//? idiom, one button per pane, rather than a modal cursor. Nothing is filtered when
+				//? choosing explicitly, so lo and an idle wlan0 are fair game.
+				if (is_in(key, "b", "n", "v", "w")) {
 					atomic_wait(Runner::active);
-					const int panes = std::max(1, (int)Net::shown_ifaces.size());
-					Net::focused_pane = (Net::focused_pane + 1) % panes;
-					Net::redraw = true;
-				}
-				else if (is_in(key, "b", "n")) {
-					atomic_wait(Runner::active);
-					//? Pane 0 is the selected interface; the rest carry their own explicit choice,
-					//? and nothing is filtered there - lo and an idle wlan0 are fair game.
-					const string current = (Net::focused_pane == 0)
-						? Net::selected_iface
-						: (std::cmp_less(Net::focused_pane, Net::shown_ifaces.size())
-							? Net::shown_ifaces.at(Net::focused_pane) : Net::selected_iface);
+					const bool second = is_in(key, "v", "w");
+					const bool back = is_in(key, "b", "v");
+					if (second and Net::shown_ifaces.size() < 2) return;
+					const string current = second ? Net::shown_ifaces.at(1) : Net::selected_iface;
 					int c_index = v_index(Net::interfaces, current);
 					if (c_index != (int)Net::interfaces.size()) {
-						if (key == "b") {
+						if (back) {
 							if (--c_index < 0) c_index = Net::interfaces.size() - 1;
 						}
-						else if (key == "n") {
+						else {
 							if (++c_index == (int)Net::interfaces.size()) c_index = 0;
 						}
-						if (Net::focused_pane == 0) {
+						if (not second) {
 							Net::selected_iface = Net::interfaces.at(c_index);
 							Net::rescale = true;
 						}
 						else {
 							Net::pane_iface.resize(4);
-							Net::pane_iface.at(Net::focused_pane) = Net::interfaces.at(c_index);
+							Net::pane_iface.at(1) = Net::interfaces.at(c_index);
 							string joined;
 							for (size_t i = 1; i < Net::pane_iface.size(); i++)
 								joined += (Net::pane_iface.at(i).empty() ? "-" : Net::pane_iface.at(i)) + ' ';

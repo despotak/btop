@@ -1732,7 +1732,7 @@ namespace Net {
 	//? Draws one interface into a horizontal slice of the net box. py/ph are the slice;
 	//? first marks the pane that owns the box title and the b/n/z/a/y buttons.
 	string draw_iface(const net_info& net, const string& iface, int py, int ph, bool first,
-	                  bool focused, bool redraw, bool data_same) {
+	                  bool selectable, bool redraw, bool data_same) {
 		auto net_sync = Config::getB("net_sync");
 		auto net_auto = Config::getB("net_auto");
 		auto tty_mode = Config::getB("tty_mode");
@@ -1793,13 +1793,23 @@ namespace Net {
 			}
 			}
 			else {
-				//? Later panes get a divider. The name goes on the right, where the first pane keeps
-				//? its selector, because the IP field owns x+8 on every pane.
+				//? The second pane gets its own selector button in the same shape as b/n, on its
+				//? divider. Panes beyond the second have no keys left, so they show a plain label
+				//? and stay on auto.
 				out += Mv::to(y, x) + Theme::c("net_box") + Symbols::div_left
-					+ Symbols::h_line * max(0, width - i_size - 5) + Symbols::title_left
-					+ Fx::b + Theme::c(focused ? "hi_fg" : "title") + uresize(iface, MAX_IFNAMSIZ)
-					+ Fx::ub + Theme::c("net_box") + Symbols::title_right
+					+ Symbols::h_line * max(0, width - i_size - (selectable ? 11 : 5))
+					+ Symbols::title_left + Fx::b;
+				if (selectable)
+					out += Theme::c("hi_fg") + Symbols::left + "v " + Theme::c("title")
+						+ uresize(iface, MAX_IFNAMSIZ) + Theme::c("hi_fg") + " w" + Symbols::right;
+				else
+					out += Theme::c("title") + uresize(iface, MAX_IFNAMSIZ);
+				out += Fx::ub + Theme::c("net_box") + Symbols::title_right
 					+ Symbols::h_line + Symbols::div_right;
+				if (selectable) {
+					Input::mouse_mappings["v"] = {y, x + width - i_size - 9, 1, 3};
+					Input::mouse_mappings["w"] = {y, x + width - 6, 1, 3};
+				}
 			}
 			out += Draw::createBox(b_x, b_y, b_width, b_height, "", false,
 				(swap_upload_download ? "upload" : "download"), (swap_upload_download ? "download" : "upload"));
@@ -1918,7 +1928,7 @@ namespace Net {
 			const auto& iface = shown_ifaces.at(i);
 			const auto it = current_net.find(iface);
 			out += draw_iface((it == current_net.end() ? net : it->second), iface,
-				y + used, ph, i == 0, i == focused_pane, redraw, data_same);
+				y + used, ph, i == 0, i == 1, redraw, data_same);
 			used += ph;
 		}
 		redraw = false;

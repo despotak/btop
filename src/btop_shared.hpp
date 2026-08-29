@@ -364,8 +364,6 @@ namespace Net {
 	//? Explicit interface per extra pane; empty entry means "pick one automatically".
 	//? Persisted through the net_extra_ifaces config string.
 	extern vector<string> pane_iface;
-	//? Which pane b and n act on. 0 is the selected interface, as before.
-	extern int focused_pane;
 	extern vector<string> interfaces;
 	extern bool rescale;
 	extern std::unordered_map<string, uint64_t> graph_max;
