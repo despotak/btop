@@ -1859,10 +1859,14 @@ namespace Net {
 		//? Pane 0 is the selected interface; the rest follow it in the interface list, loopback last
 		shown_ifaces.clear();
 		shown_ifaces.push_back(selected_iface);
-		//? getifaddrs order is arbitrary and puts docker0 ahead of the real NICs, so rank the
-		//? candidates by traffic instead - the interfaces worth a pane are the ones moving bytes.
-		vector<std::pair<uint64_t, string>> ranked;
-		for (const auto& i : interfaces) {
+		//? The panes are a window over the interface list starting at the selected one, so b and n
+		//? move the whole window and every pane is reachable without another binding. Interfaces
+		//? that have never moved a byte are skipped - getifaddrs lists docker0, wlan0 and the
+		//? unused port of the dual-port card, and none of them are worth a pane.
+		const int start = v_index(interfaces, selected_iface);
+		for (size_t step = 1; step <= interfaces.size(); step++) {
+			if (std::cmp_greater_equal(shown_ifaces.size(), panes)) break;
+			const auto& i = interfaces.at((start + step) % interfaces.size());
 			if (i == selected_iface or i == "lo") continue;
 			const auto it = current_net.find(i);
 			if (it == current_net.end()) continue;
@@ -1870,12 +1874,7 @@ namespace Net {
 			uint64_t bytes = 0;
 			if (st.contains("download")) bytes += st.at("download").total;
 			if (st.contains("upload")) bytes += st.at("upload").total;
-			ranked.emplace_back(bytes, i);
-		}
-		rng::sort(ranked, rng::greater{}, &std::pair<uint64_t, string>::first);
-		for (const auto& [bytes, i] : ranked) {
-			if (std::cmp_greater_equal(shown_ifaces.size(), panes)) break;
-			if (bytes == 0) break;
+			if (bytes == 0) continue;
 			shown_ifaces.push_back(i);
 		}
 		panes = (int)shown_ifaces.size();
