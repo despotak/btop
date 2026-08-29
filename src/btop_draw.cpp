@@ -1391,7 +1391,7 @@ namespace Mem {
 	//? Builds the disk meters and io graphs. Lived inside Mem::draw, which meant a standalone
 	//? disks box with the mem box hidden had no meters at all and rendered empty. Called by
 	//? whichever box is about to draw the list.
-	void prepare_disks(const mem_info& mem, int dwidth, int dheight) {
+	void prepare_disks(const mem_info& mem, int dwidth, int dheight, bool scrollable) {
 		auto show_io_stat = Config::getB("show_io_stat");
 		auto io_mode = Config::getB("io_mode");
 		auto io_graph_combined = Config::getB("io_graph_combined");
@@ -1452,7 +1452,7 @@ namespace Mem {
 				for (int i = 0; const auto& [name, ignored] : mem.disks) {
 					if (i * 2 > height - 2) break;
 					disk_meters_used[name] = Draw::Meter{disk_meter, "used"};
-					if (cmp_less_equal(mem.disks.size() * 3, height - 1))
+					if (scrollable or cmp_less_equal(mem.disks.size() * 3, height - 1))
 						disk_meters_free[name] = Draw::Meter{disk_meter, "free"};
 				}
 
@@ -1461,7 +1461,7 @@ namespace Mem {
 	//? Draws the disk list into an arbitrary rectangle. Shared by the mem box, which hosts it in
 	//? its right half, and by the standalone disks box (#918), so there is one implementation.
 	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh,
-	                      bool redraw, bool data_same, const string& box_color, int scroll) {
+	                      bool redraw, bool data_same, const string& box_color, int scroll, bool scrollable) {
 		int skip = scroll;
 		string out;
 		auto io_mode = Config::getB("io_mode");
@@ -1547,10 +1547,11 @@ namespace Mem {
 						+ disk_meters_used.at(mount)(disk.used_percent) + rjust(human_used, (big_disk ? 9 : 5));
 					if (++cy > dh - 3) break;
 
-					if (disk_meters_free.contains(mount) and cmp_less_equal(disks.size() * 3 + (show_io_stat ? disk_ios : 0), dh - 1)) {
+					if (disk_meters_free.contains(mount) and (scrollable or cmp_less_equal(disks.size() * 3 + (show_io_stat ? disk_ios : 0), dh - 1))) {
 						out += Mv::to(dy+1+cy, dx+1) + (big_disk ? " Free:" + rjust(to_string(disk.free_percent) + '%', 4) : "F") + ' '
 						+ disk_meters_free.at(mount)(disk.free_percent) + rjust(human_free, (big_disk ? 9 : 5));
 						cy++;
+						//? the blank separator row is still a fit question, not a reachability one
 						if (cmp_less_equal(disks.size() * 4 + (show_io_stat ? disk_ios : 0), dh - 1)) cy++;
 					}
 
@@ -1698,7 +1699,7 @@ namespace Disks {
 			out += box;
 			//? Meters are sized here rather than in Mem::draw, which does not run when the mem box
 			//? is hidden - that left this box drawing an empty frame.
-			Mem::prepare_disks(mem, width - 2, height);
+			Mem::prepare_disks(mem, width - 2, height, true);
 			//? The io toggle belongs to the list, so it lives on this border now
 			const int io_x = x + width - 6;
 			out += Mv::to(y, io_x) + Fx::ub + Theme::c("mem_box") + Symbols::title_left
@@ -1708,7 +1709,7 @@ namespace Disks {
 		}
 		//? Never scroll the last entry off the top
 		scroll = clamp(scroll, 0, max(0, (int)mem.disks_order.size() - 1));
-		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"), scroll);
+		out += Mem::draw_disk_list(mem, x, y, width - 2, height, redraw, data_same, Theme::c("mem_box"), scroll, true);
 		redraw = false;
 		return out + Fx::reset;
 	}
@@ -2924,7 +2925,10 @@ namespace Draw {
 		//* Calculate and draw proc box outlines
 		if (Proc::shown) {
 			using namespace Proc;
-			width = Term::width - (Mem::shown ? Mem::width : (Net::shown ? Net::width : 0));
+			//? mem may have handed part of its slot to the standalone disks box; the left column is
+			//? both of them, not mem alone.
+			const int left_column = (Mem::shown ? Mem::width : 0) + (Disks::shown ? Disks::width : 0);
+			width = (int)Term::width - (left_column > 0 ? left_column : (Net::shown ? Net::width : 0));
 		#ifdef GPU_SUPPORT
 			height = Term::height - Cpu::height - Gpu::total_height;
 		#else

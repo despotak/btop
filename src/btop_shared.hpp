@@ -334,8 +334,10 @@ namespace Mem {
 
 	//* Draw contents of mem box using <mem> as source
 	string draw(const mem_info& mem, bool force_redraw = false, bool data_same = false);
-	void prepare_disks(const mem_info& mem, int dwidth, int dheight);
-	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color, int scroll = 0);
+	//? scrollable: the caller can reach entries that do not fit, so the Free row no longer has to
+	//? be dropped to make everything visible at once.
+	void prepare_disks(const mem_info& mem, int dwidth, int dheight, bool scrollable = false);
+	string draw_disk_list(const mem_info& mem, int dx, int dy, int dw, int dh, bool redraw, bool data_same, const string& box_color, int scroll = 0, bool scrollable = false);
 
 }
 
