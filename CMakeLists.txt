@@ -188,9 +188,11 @@ if(LINUX AND BTOP_GPU)
 
     target_link_libraries(libbtop ROCm)
   endif()
-  if(NOT BTOP_STATIC)
-    target_link_libraries(libbtop ${CMAKE_DL_LIBS})
-  endif()
+endif()
+
+# NVML, ROCm SMI and libzfs are all dlopen'd, and libzfs is not a GPU library
+if(LINUX AND NOT BTOP_STATIC)
+  target_link_libraries(libbtop ${CMAKE_DL_LIBS})
 endif()
 
 if(BTOP_STATIC)

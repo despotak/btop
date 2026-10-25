@@ -24,6 +24,7 @@ tab-size = 4
 #include <fstream>
 #include <future>
 #include <iterator>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <ranges>
@@ -2742,6 +2743,9 @@ namespace Mem {
 	//?* Collect total ZFS pool io stats
 	bool zfs_collect_pool_total_stats(struct disk_info &disk);
 
+	//?* Used and available bytes of a ZFS pool's root dataset, from libzfs; nullopt if it can't be loaded
+	std::optional<pair<uint64_t, uint64_t>> zfs_pool_used_avail(const string& pool);
+
 	mem_info current_mem {};
 
 	uint64_t get_totalMem() {
@@ -2977,7 +2981,9 @@ namespace Mem {
 
 							//? Save mountpoint, name, fstype, dev path and path to /sys/block stat file
 							if (not disks.contains(mountpoint)) {
-								disks[mountpoint] = disk_info{fs::canonical(dev, ec), fs::path(mountpoint).filename(), fstype};
+								//? A ZFS source is a dataset name, not a path: canonical() resolved it against the
+								//? working directory, so btop started from / on a box with /limbo named the pool "/limbo".
+								disks[mountpoint] = disk_info{fstype == "zfs" ? fs::path(dev) : fs::canonical(dev, ec), fs::path(mountpoint).filename(), fstype};
 								if (disks.at(mountpoint).dev.empty()) disks.at(mountpoint).dev = dev;
 								#ifdef SNAPPED
 									if (mountpoint == "/mnt") disks.at(mountpoint).name = "root";
@@ -3061,15 +3067,28 @@ namespace Mem {
 						disk.used_percent = updated_stats.used_percent;
 						disk.free_percent = updated_stats.free_percent;
 					}
-					disks_stats_promises[mountpoint] = async(std::launch::async, [mountpoint, free_priv]() -> pair<disk_info, int> {
-						struct statvfs vfs;
+					//? statvfs on a pool's root dataset counts only that dataset's own data, so a pool row
+					//? read ~0 % until the pool was full. The root dataset's used + available is the pool's
+					//? usable capacity, children and snapshots included - what `zfs list` shows for it.
+					const string zfs_pool = (disk.fstype == "zfs" and zfs_hide_datasets) ? disk.dev.string() : "";
+					disks_stats_promises[mountpoint] = async(std::launch::async, [mountpoint, free_priv, zfs_pool]() -> pair<disk_info, int> {
 						disk_info disk;
-						if (statvfs(mountpoint.c_str(), &vfs) < 0) {
-							return pair{disk, errno};
+						std::optional<pair<uint64_t, uint64_t>> used_avail;
+						if (not zfs_pool.empty()) used_avail = zfs_pool_used_avail(zfs_pool);
+						if (used_avail) {
+							//? No free_priv here: ZFS keeps no root reserve, its statvfs reports f_bfree == f_bavail.
+							disk.used = used_avail->first;
+							disk.free = used_avail->second;
+							disk.total = disk.used + disk.free;
+						} else {
+							struct statvfs vfs;
+							if (statvfs(mountpoint.c_str(), &vfs) < 0) {
+								return pair{disk, errno};
+							}
+							disk.total = vfs.f_blocks * vfs.f_frsize;
+							disk.free = (free_priv ? vfs.f_bfree : vfs.f_bavail) * vfs.f_frsize;
+							disk.used = disk.total - disk.free;
 						}
-						disk.total = vfs.f_blocks * vfs.f_frsize;
-						disk.free = (free_priv ? vfs.f_bfree : vfs.f_bavail) * vfs.f_frsize;
-						disk.used = disk.total - disk.free;
 						if (disk.total != 0) {
 							disk.used_percent = round((double)disk.used * 100 / disk.total);
 							disk.free_percent = 100 - disk.used_percent;
@@ -3329,6 +3348,107 @@ namespace Mem {
 		while (cmp_greater(disk.io_activity.size(), width * 2)) disk.io_activity.pop_front();
 
 		return true;
+	}
+
+#if !(defined(STATIC_BUILD) && defined(__GLIBC__))
+	//? libzfs is dlopen'd like NVML and ROCm SMI, so btop needs no ZFS headers to build and no ZFS
+	//? library to run. Prototypes are libzfs.h's with the handles left opaque, and the property ids
+	//? are asked of the loaded library by name instead of compiled in from one version's enum.
+	namespace Libzfs {
+		constexpr int ZFS_TYPE_FILESYSTEM = 1 << 0;
+		constexpr int ZPROP_INVAL = -1;
+
+		void* dl_handle{};
+		void* hdl{};
+		bool tried{};
+		int prop_used = ZPROP_INVAL, prop_available = ZPROP_INVAL;
+		//? One handle, and every pool row's stats run on their own async thread.
+		std::mutex lock;
+
+		void* (*libzfs_init)();
+		void (*libzfs_fini)(void*);
+		void (*libzfs_print_on_error)(void*, int);
+		void* (*zfs_open)(void*, const char*, int);
+		void (*zfs_close)(void*);
+		uint64_t (*zfs_prop_get_int)(void*, int);
+		int (*zfs_name_to_prop)(const char*);
+
+		bool init() {
+			//? Without /dev/zfs, libzfs_init() runs `modprobe zfs` if the module is not loaded, and
+			//? otherwise waits up to ZFS_MODULE_TIMEOUT (10 s) for the device. A monitor does neither.
+			if (access("/dev/zfs", R_OK | W_OK) != 0) {
+				Logger::info("ZFS: /dev/zfs is not accessible, pool sizes come from statvfs");
+				return false;
+			}
+
+			//? The soname moves with every OpenZFS ABI change (.7 is 2.4, .6 is 2.3), so take the
+			//? newest present. The unversioned name only exists with the development package.
+			string loaded = "libzfs.so";
+			dl_handle = dlopen(loaded.c_str(), RTLD_LAZY);
+			for (int major = 9; dl_handle == nullptr and major >= 2; major--) {
+				loaded = fmt::format("libzfs.so.{}", major);
+				dl_handle = dlopen(loaded.c_str(), RTLD_LAZY);
+			}
+			if (dl_handle == nullptr) {
+				Logger::info("ZFS: libzfs not found, pool sizes come from statvfs");
+				return false;
+			}
+
+			auto fail = [](const string& why) {
+				Logger::warning("ZFS: {}, pool sizes come from statvfs", why);
+				if (hdl != nullptr) libzfs_fini(hdl);
+				hdl = nullptr;
+				dlclose(dl_handle);
+				dl_handle = nullptr;
+				return false;
+			};
+
+			#define LOAD_SYM(NAME) if ((NAME = (decltype(NAME))dlsym(dl_handle, #NAME)) == nullptr) return fail(fmt::format("{} has no {}", loaded, #NAME))
+			LOAD_SYM(libzfs_init);
+			LOAD_SYM(libzfs_fini);
+			LOAD_SYM(libzfs_print_on_error);
+			LOAD_SYM(zfs_open);
+			LOAD_SYM(zfs_close);
+			LOAD_SYM(zfs_prop_get_int);
+			LOAD_SYM(zfs_name_to_prop);
+			#undef LOAD_SYM
+
+			if ((hdl = libzfs_init()) == nullptr) return fail("libzfs_init() failed");
+			//? Off by default, but an error printed to stderr would land in the middle of the TUI.
+			libzfs_print_on_error(hdl, 0);
+
+			prop_used = zfs_name_to_prop("used");
+			prop_available = zfs_name_to_prop("available");
+			if (prop_used == ZPROP_INVAL or prop_available == ZPROP_INVAL)
+				return fail(fmt::format("{} knows no used/available property", loaded));
+
+			Logger::info("ZFS: pool sizes from {}", loaded);
+			return true;
+		}
+	}
+#endif
+
+	std::optional<pair<uint64_t, uint64_t>> zfs_pool_used_avail([[maybe_unused]] const string& pool) {
+	#if !(defined(STATIC_BUILD) && defined(__GLIBC__))
+		std::lock_guard guard(Libzfs::lock);
+		if (not Libzfs::tried) {
+			Libzfs::tried = true;
+			Libzfs::init();
+		}
+		if (Libzfs::hdl == nullptr) return std::nullopt;
+
+		auto zhp = Libzfs::zfs_open(Libzfs::hdl, pool.c_str(), Libzfs::ZFS_TYPE_FILESYSTEM);
+		if (zhp == nullptr) {
+			Logger::debug("ZFS: zfs_open({}) failed, falling back to statvfs", pool);
+			return std::nullopt;
+		}
+		const uint64_t used = Libzfs::zfs_prop_get_int(zhp, Libzfs::prop_used);
+		const uint64_t avail = Libzfs::zfs_prop_get_int(zhp, Libzfs::prop_available);
+		Libzfs::zfs_close(zhp);
+		return pair{used, avail};
+	#else
+		return std::nullopt;
+	#endif
 	}
 
 }
